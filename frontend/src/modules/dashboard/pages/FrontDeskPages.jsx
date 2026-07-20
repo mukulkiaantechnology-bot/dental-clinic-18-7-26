@@ -518,6 +518,22 @@ export function FrontDeskRegistrationPage() {
   const [allergies, setAllergies] = useState('');
   const [insurance, setInsurance] = useState('');
   const [status, setStatus] = useState('Active');
+  
+  // Previous Dentist Information states
+  const [prevDentistName, setPrevDentistName] = useState('');
+  const [prevDentistClinic, setPrevDentistClinic] = useState('');
+  const [prevDentistPhone, setPrevDentistPhone] = useState('');
+  const [lastDentalVisit, setLastDentalVisit] = useState('');
+
+  // Existing Dental Conditions states
+  const [existingDentalConditions, setExistingDentalConditions] = useState([]);
+  const [existingDentalNotes, setExistingDentalNotes] = useState('');
+
+  const toggleDentalCondition = (condId) => {
+    setExistingDentalConditions(prev => 
+      prev.includes(condId) ? prev.filter(c => c !== condId) : [...prev, condId]
+    );
+  };
 
   const filteredPatients = useMemo(() => {
     return patients.filter((p) => {
@@ -538,6 +554,12 @@ export function FrontDeskRegistrationPage() {
     setAllergies('');
     setInsurance('');
     setStatus('Active');
+    setPrevDentistName('');
+    setPrevDentistClinic('');
+    setPrevDentistPhone('');
+    setLastDentalVisit('');
+    setExistingDentalConditions([]);
+    setExistingDentalNotes('');
     setShowForm(true);
   };
 
@@ -553,6 +575,17 @@ export function FrontDeskRegistrationPage() {
     setAllergies(patient.allergies ? patient.allergies.join(', ') : '');
     setInsurance(patient.insuranceProvider || '');
     setStatus(patient.status || 'Active');
+
+    const medCond = typeof patient.medicalConditions === 'string'
+      ? (() => { try { return JSON.parse(patient.medicalConditions); } catch (_) { return {}; } })()
+      : (patient.medicalConditions || {});
+    setPrevDentistName(medCond.previousDentistName || '');
+    setPrevDentistClinic(medCond.previousDentistClinic || '');
+    setPrevDentistPhone(medCond.previousDentistPhone || '');
+    setLastDentalVisit(medCond.lastDentalVisit || '');
+    setExistingDentalConditions(Array.isArray(medCond.existingDentalConditions) ? medCond.existingDentalConditions : []);
+    setExistingDentalNotes(medCond.existingDentalNotes || '');
+
     setShowForm(true);
   };
 
@@ -576,6 +609,22 @@ export function FrontDeskRegistrationPage() {
 
     const targetClinicId = selectedClinicId === 'all' ? 'clinic-1' : selectedClinicId;
 
+    const existingMedCond = editingPatient
+      ? (typeof editingPatient.medicalConditions === 'string'
+          ? (() => { try { return JSON.parse(editingPatient.medicalConditions); } catch (_) { return {}; } })()
+          : (editingPatient.medicalConditions || {}))
+      : {};
+
+    const updatedMedCond = {
+      ...existingMedCond,
+      previousDentistName: prevDentistName.trim() || undefined,
+      previousDentistClinic: prevDentistClinic.trim() || undefined,
+      previousDentistPhone: prevDentistPhone.trim() || undefined,
+      lastDentalVisit: lastDentalVisit || undefined,
+      existingDentalConditions: existingDentalConditions,
+      existingDentalNotes: existingDentalNotes.trim() || undefined,
+    };
+
     const patientData = {
       name,
       age: Number(age) || 30,
@@ -587,7 +636,8 @@ export function FrontDeskRegistrationPage() {
       allergies: allergyArr,
       insuranceProvider: insurance || 'None',
       status,
-      clinicId: editingPatient ? editingPatient.clinicId : targetClinicId
+      clinicId: editingPatient ? editingPatient.clinicId : targetClinicId,
+      medicalConditions: updatedMedCond,
     };
 
     try {
@@ -612,6 +662,12 @@ export function FrontDeskRegistrationPage() {
       setAllergies('');
       setInsurance('');
       setStatus('Active');
+      setPrevDentistName('');
+      setPrevDentistClinic('');
+      setPrevDentistPhone('');
+      setLastDentalVisit('');
+      setExistingDentalConditions([]);
+      setExistingDentalNotes('');
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to register/update patient');
     }
@@ -1149,6 +1205,90 @@ export function FrontDeskRegistrationPage() {
               onChange={(e) => setInsurance(e.target.value)}
               placeholder="e.g. Blue Cross Blue Shield"
               className="text-xs text-foreground font-medium"
+            />
+          </div>
+
+          <h3 className="font-extrabold text-sm text-primary uppercase tracking-wider border-b border-border pb-2 pt-4 flex items-center gap-1">
+            <Clipboard className="h-4.5 w-4.5" />
+            3. Previous Dentist & Dental History
+          </h3>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Input
+              label="Previous Dentist Name"
+              value={prevDentistName}
+              onChange={(e) => setPrevDentistName(e.target.value)}
+              placeholder="e.g. Dr. R. K. Sharma"
+              className="text-xs text-foreground font-medium"
+            />
+            <Input
+              label="Previous Clinic / Practice Name"
+              value={prevDentistClinic}
+              onChange={(e) => setPrevDentistClinic(e.target.value)}
+              placeholder="e.g. City Dental Care"
+              className="text-xs text-foreground font-medium"
+            />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Input
+              label="Previous Dentist Phone Number"
+              value={prevDentistPhone}
+              onChange={(e) => setPrevDentistPhone(e.target.value)}
+              placeholder="e.g. +91 9876543210"
+              className="text-xs text-foreground font-medium"
+            />
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">Last Dental Visit Date</label>
+              <input
+                type="date"
+                value={lastDentalVisit}
+                onChange={(e) => setLastDentalVisit(e.target.value)}
+                className="w-full text-xs font-medium bg-muted border border-border rounded-lg p-2.5 focus:outline-none cursor-pointer text-foreground"
+              />
+            </div>
+          </div>
+
+          {/* Existing Dental Conditions Checklist */}
+          <div className="space-y-2 pt-2">
+            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">Pre-Existing Dental Conditions Checklist</label>
+            <div className="flex flex-wrap gap-2">
+              {[
+                { id: 'Crown / Bridge', label: 'Crown / Bridge' },
+                { id: 'Dental Implants', label: 'Implants' },
+                { id: 'Full / Partial Dentures', label: 'Dentures' },
+                { id: 'Prior Root Canal (RCT)', label: 'Prior RCT' },
+                { id: 'Orthodontic Braces / Retainer', label: 'Orthodontics / Braces' },
+                { id: 'Bruxism / Teeth Grinding', label: 'Bruxism / Grinding' },
+                { id: 'Periodontal History', label: 'Periodontal History' },
+              ].map(cond => {
+                const isSelected = existingDentalConditions.includes(cond.id);
+                return (
+                  <button
+                    key={cond.id}
+                    type="button"
+                    onClick={() => toggleDentalCondition(cond.id)}
+                    className={`px-3 py-1.5 rounded-xl border text-[11px] font-bold cursor-pointer transition-all ${
+                      isSelected
+                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                        : 'bg-muted/40 text-muted-foreground border-border hover:bg-muted'
+                    }`}
+                  >
+                    {isSelected ? '✓ ' : '+ '}{cond.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">Existing Dental Notes / Clinical History</label>
+            <textarea
+              value={existingDentalNotes}
+              onChange={(e) => setExistingDentalNotes(e.target.value)}
+              rows={2}
+              placeholder="e.g. Upper right molar crown placed 2022, tooth #19 RCT treated..."
+              className="w-full text-xs font-semibold bg-muted border border-border rounded-xl p-2.5 focus:outline-none text-foreground resize-none"
             />
           </div>
 

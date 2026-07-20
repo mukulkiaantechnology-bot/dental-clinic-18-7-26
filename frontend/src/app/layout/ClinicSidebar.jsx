@@ -29,7 +29,7 @@ export function ClinicSidebar({ isMobileOpen, onClose }) {
           // base sidebar styles
           'flex flex-col h-full bg-card border-r border-border text-foreground transition-all duration-300 relative',
           // desktop layout
-          'hidden md:flex h-screen z-30',
+          'hidden md:flex h-full z-30',
           isCollapsed ? 'md:w-[72px]' : 'md:w-[260px]',
           // mobile drawer layout
           'fixed md:relative inset-y-0 left-0 z-50 w-[260px]',
@@ -122,26 +122,30 @@ export function ClinicSidebar({ isMobileOpen, onClose }) {
         </nav>
 
         {/* Footer Info */}
-        <div className="p-4 border-t border-border flex items-center justify-between">
+        <div className="p-4 border-t border-border flex items-center justify-between flex-shrink-0 bg-card">
           {(!isCollapsed || isMobileOpen) && (
             <div className="flex items-center gap-3 text-left w-full overflow-hidden">
               <img
-                src={user.avatarUrl}
+                src={user.avatarUrl || 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?w=150'}
                 alt={user.name}
                 className="h-9 w-9 rounded-full object-cover border border-border flex-shrink-0"
               />
-              <div className="overflow-hidden flex-1">
-                <h4 className="text-xs font-bold text-foreground truncate">{user.name}</h4>
-                <p className="text-[10px] text-muted-foreground truncate">{user.email}</p>
+              <div className="overflow-hidden flex-1 min-w-0 flex flex-col justify-center">
+                <h4 className="text-xs font-extrabold text-foreground truncate leading-tight">{user.name}</h4>
+                <p className="text-[9px] text-muted-foreground truncate font-semibold uppercase tracking-wider mt-0.5 leading-none">
+                  {user.role ? user.role.replace('_', ' ') : 'Clinic Owner'}
+                </p>
               </div>
             </div>
           )}
           {isCollapsed && !isMobileOpen && (
-            <img
-              src={user.avatarUrl}
-              alt={user.name}
-              className="h-9 w-9 rounded-full object-cover border border-border mx-auto"
-            />
+            <div className="w-full flex justify-center">
+              <img
+                src={user.avatarUrl || 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?w=150'}
+                alt={user.name}
+                className="h-9 w-9 rounded-full object-cover border border-border mx-auto"
+              />
+            </div>
           )}
         </div>
       </aside>

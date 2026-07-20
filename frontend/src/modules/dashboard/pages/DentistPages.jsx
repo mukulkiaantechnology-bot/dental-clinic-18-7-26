@@ -16,16 +16,19 @@ import {
   Sparkles,
   Plus,
   ShieldAlert,
+  ShieldCheck,
   Calendar,
   RotateCcw,
   Loader2,
   Heart,
   Table,
   Info,
+  FlaskConical,
   HeartPulse
 } from 'lucide-react';
 import { resolveFileUrl, useDentistStore } from '../../../store/dentistStore';
 import { useAppointmentStore } from '../../../store/appointmentStore';
+import { useLabStore } from '../../../store/labStore';
 import { useAINotesStore } from '../../../store/aiNotesStore';
 import api from '../../../shared/utils/api';
 import { useAIStore } from '../../../store/aiStore';
@@ -237,6 +240,143 @@ export function DentistPatientsPage() {
 }
 
 // ----------------------------------------------------
+// 1.5. LAB ORDERS & CHAT TAB COMPONENT
+// ----------------------------------------------------
+function LabOrdersTab({ patientId }) {
+  const { labCases, addCaseComment } = useLabStore();
+  const toast = useToast();
+  const [activeCommentCase, setActiveCommentCase] = useState(null);
+  const [replyText, setReplyText] = useState('');
+
+  const patientCases = labCases.filter(c => c.patientId === patientId);
+
+  return (
+    <div className="space-y-6 py-4 text-left">
+      <div className="bg-card border border-border p-6 rounded-3xl shadow-sm space-y-4">
+        <div className="flex items-center justify-between border-b border-border pb-3">
+          <h3 className="font-black text-sm uppercase text-indigo-500 tracking-wider flex items-center gap-2">
+            <FlaskConical className="h-5 w-5 text-indigo-500" />
+            Digital Lab Cases & Communication Thread
+          </h3>
+          <Badge variant="info" className="font-bold">{patientCases.length} Active Lab Orders</Badge>
+        </div>
+
+        {patientCases.length > 0 ? (
+          <div className="grid grid-cols-1 gap-4">
+            {patientCases.map((c) => {
+              const commentsList = Array.isArray(c.comments) ? c.comments : [];
+              return (
+                <div key={c.id} className="p-4 bg-muted/40 border border-border rounded-2xl flex flex-col md:flex-row justify-between gap-4">
+                  <div className="space-y-2 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-extrabold text-sm text-foreground">{c.type}</span>
+                      <Badge variant="secondary" className="font-bold">{c.status}</Badge>
+                      <span className="text-[10px] text-muted-foreground font-mono font-bold">Case ID: #{c.id}</span>
+                    </div>
+
+                    <p className="text-xs text-foreground font-semibold">
+                      Lab Vendor: <strong>{c.labName}</strong> &bull; Expected Delivery: <strong>{c.expectedDelivery}</strong> &bull; Est. Cost: <strong>${c.cost}</strong>
+                    </p>
+
+                    {c.notes && (
+                      <div className="p-3 bg-card border border-border rounded-xl text-xs font-medium text-muted-foreground">
+                        <strong>Clinical Specifications:</strong> {c.notes}
+                      </div>
+                    )}
+
+                    {/* Live Comments Thread */}
+                    <div className="space-y-2 pt-2">
+                      <span className="text-[10px] font-black uppercase text-indigo-500 tracking-wider block">
+                        💬 Doctor ↔ Lab Tech Thread ({commentsList.length} notes)
+                      </span>
+                      {commentsList.length > 0 ? (
+                        <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                          {commentsList.map(cm => (
+                            <div key={cm.id} className="p-3 bg-card border border-border rounded-xl space-y-1">
+                              <div className="flex justify-between items-center text-[10px]">
+                                <span className="font-bold text-indigo-600 dark:text-indigo-400">
+                                  {cm.authorName} <span className="text-muted-foreground font-normal">({cm.authorRole})</span>
+                                </span>
+                                <span className="text-muted-foreground font-mono text-[9px]">
+                                  {new Date(cm.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                              </div>
+                              <p className="text-xs font-medium text-foreground">{cm.text}</p>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-[10px] text-muted-foreground italic bg-card/60 p-3 rounded-xl border border-border/40">
+                          No discussion notes posted yet by Lab Technician.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col justify-start items-end gap-2 border-t md:border-t-0 md:border-l border-border/60 pt-3 md:pt-0 md:pl-4">
+                    <Button
+                      size="sm"
+                      className="w-full font-bold text-xs h-9 bg-indigo-600 hover:bg-indigo-700 text-white cursor-pointer"
+                      onClick={() => setActiveCommentCase(c)}
+                    >
+                      💬 Post Doctor Note
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="p-8 text-center border border-dashed border-border rounded-2xl">
+            <p className="text-xs text-muted-foreground font-semibold italic">No lab cases recorded for this patient file yet. Click "+ Request Digital Lab Work" above to dispatch a new order.</p>
+          </div>
+        )}
+      </div>
+
+      {/* Discussion Reply Modal */}
+      {activeCommentCase && (
+        <Modal
+          isOpen={Boolean(activeCommentCase)}
+          onClose={() => setActiveCommentCase(null)}
+          title={`Doctor ↔ Lab Tech Discussion — Order #${activeCommentCase.id}`}
+        >
+          <div className="space-y-4 text-left text-xs font-semibold">
+            <div className="p-3 bg-muted/40 border border-border rounded-xl">
+              <span className="font-extrabold text-foreground block">{activeCommentCase.type}</span>
+              <span className="text-[10px] text-muted-foreground font-bold uppercase">{activeCommentCase.labName} &bull; Status: {activeCommentCase.status}</span>
+            </div>
+
+            <textarea
+              value={replyText}
+              onChange={(e) => setReplyText(e.target.value)}
+              placeholder="Type Doctor instruction / response to Lab Technician..."
+              rows={3}
+              className="w-full p-3 bg-background border border-border rounded-xl text-xs font-medium focus:outline-none"
+            />
+
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setActiveCommentCase(null)}>Cancel</Button>
+              <Button
+                onClick={() => {
+                  if (!replyText.trim()) return;
+                  addCaseComment(activeCommentCase.id, replyText.trim(), 'Dr. Arthur Vance, DDS', 'Dentist');
+                  setReplyText('');
+                  toast.success('Doctor note posted to lab case file.');
+                  setActiveCommentCase(null);
+                }}
+                className="bg-indigo-600 text-white font-bold"
+              >
+                Send Doctor Note
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+// ----------------------------------------------------
 // 2. PATIENT DETAIL CONTROLLER PAGE (TABS MAPPED)
 // ----------------------------------------------------
 export function PatientDetailPage() {
@@ -250,19 +390,38 @@ export function PatientDetailPage() {
   const activeTab = searchParams.get('tab') || 'overview';
   const patient = patients.find((p) => p.id === id);
 
+  // Digital Lab Requisition modal state (Hooks MUST be at top before conditional returns)
+  const { labCases, fetchLabCases } = useLabStore();
+  const [isLabModalOpen, setIsLabModalOpen] = useState(false);
+  const [labRestorationType, setLabRestorationType] = useState('Crown');
+  const [labMaterial, setLabMaterial] = useState('Zirconia');
+  const [labShade, setLabShade] = useState('A2');
+  const [labToothNumber, setLabToothNumber] = useState('14');
+  const [labVendor, setLabVendor] = useState('Pacific Dental Lab');
+  const [labCost, setLabCost] = useState('350');
+  const [labExpectedDate, setLabExpectedDate] = useState(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
+  const [labNotes, setLabNotes] = useState('');
+
   useEffect(() => {
     fetchPatients();
     fetchAppointments();
+    fetchLabCases();
     if (id) {
       fetchPatientDetails(id);
     }
-  }, [id, fetchPatients, fetchAppointments, fetchPatientDetails]);
+  }, [id, fetchPatients, fetchAppointments, fetchPatientDetails, fetchLabCases]);
 
   useEffect(() => {
     if (id) {
       setActivePatientId(id);
     }
   }, [id, setActivePatientId]);
+
+  const dynamicLabVendors = useMemo(() => {
+    const defaults = ['Pacific Dental Lab', 'Precision Dental Labs', 'Apex Dental Lab (USA)', 'Metro Internal Lab'];
+    const fromCases = (labCases || []).map(c => c.labName).filter(Boolean);
+    return Array.from(new Set([...fromCases, ...defaults]));
+  }, [labCases]);
 
   if (loading && patients.length === 0) {
     return (
@@ -293,6 +452,36 @@ export function PatientDetailPage() {
 
   const isLocked = activeAppointment && (activeAppointment.workflowStage === 'CHECKED_IN' || activeAppointment.workflowStage === 'IN_PROGRESS');
   const isFinalized = false; // Always editable so dentist can view/modify records at any time
+
+  const handleSubmitLabOrder = async (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    try {
+      const currentUser = useAuthStore.getState().user;
+      const createdId = await useLabStore.getState().createLabCase({
+        patientId: patient?.id || 'p1',
+        patientName: patient?.name || 'Patient',
+        dentistName: currentUser?.name || 'Dr. Arthur Vance, DDS',
+        type: labRestorationType || 'Crown',
+        material: labMaterial,
+        shade: labShade,
+        toothNumber: labToothNumber,
+        labName: labVendor,
+        cost: Number(labCost) || 350,
+        notes: `[Tooth #${labToothNumber} | ${labMaterial} | Shade ${labShade}] ${(labNotes || '').trim()}`,
+        expectedDelivery: labExpectedDate || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+      });
+      if (createdId) {
+        toast.success(`Digital Lab Requisition dispatched to ${labVendor}! (Case #${createdId})`, 'Lab Order Dispatched');
+        setIsLabModalOpen(false);
+        setLabNotes('');
+      } else {
+        toast.error('Failed to dispatch digital lab requisition.');
+      }
+    } catch (err) {
+      console.error('Error submitting lab order:', err);
+      toast.error(err.message || 'Error dispatching lab requisition.');
+    }
+  };
 
   const handleSaveAndFinalize = async () => {
     try {
@@ -397,15 +586,24 @@ export function PatientDetailPage() {
       <div className="bg-card border border-border p-4 rounded-2xl flex flex-wrap items-center justify-between gap-3 text-left">
         <div className="space-y-0.5">
           <span className="text-[10px] font-extrabold text-muted-foreground uppercase tracking-wider block">Session Actions</span>
-          <p className="text-xs text-foreground font-semibold">Save and finalize patient treatment to update records and patient menu list.</p>
+          <p className="text-xs text-foreground font-semibold">Save and finalize patient treatment to update records or order digital lab work.</p>
         </div>
-        <Button
-          size="sm"
-          onClick={handleSaveAndFinalize}
-          className="font-bold text-xs h-9 gap-1.5 cursor-pointer bg-emerald-500 hover:bg-emerald-600 text-white"
-        >
-          Save & Finalize Treatment
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            onClick={() => setIsLabModalOpen(true)}
+            className="font-bold text-xs h-9 gap-1.5 cursor-pointer bg-indigo-600 hover:bg-indigo-700 text-white"
+          >
+            🔬 Request Digital Lab Work / Scan
+          </Button>
+          <Button
+            size="sm"
+            onClick={handleSaveAndFinalize}
+            className="font-bold text-xs h-9 gap-1.5 cursor-pointer bg-emerald-500 hover:bg-emerald-600 text-white"
+          >
+            Save & Finalize Treatment
+          </Button>
+        </div>
       </div>
 
       {/* Clinical Workflow stage banner */}
@@ -490,6 +688,146 @@ export function PatientDetailPage() {
         </div>
       )}
       <ClinicalTestSandbox />
+
+      {/* Digital Lab Order Requisition Modal */}
+      <Modal
+        isOpen={isLabModalOpen}
+        onClose={() => setIsLabModalOpen(false)}
+        title={`Digital Lab Requisition & Scan Order — ${patient.name}`}
+        size="2xl"
+      >
+        <form onSubmit={handleSubmitLabOrder} className="space-y-4 text-left text-xs font-semibold">
+          <div className="p-3 bg-indigo-500/10 border border-indigo-500/20 rounded-xl space-y-1">
+            <p className="font-extrabold text-indigo-600 dark:text-indigo-400 uppercase text-[10px] tracking-wider">🔬 Digital CAD/CAM & Scans Dispatch</p>
+            <p className="text-[11px] text-muted-foreground font-medium">Requisition lab fabrication or 3D DICOM/CBCT scans directly to internal lab or registered US dental lab vendor.</p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground block">Restoration / Order Type *</label>
+              <select
+                value={labRestorationType}
+                onChange={(e) => setLabRestorationType(e.target.value)}
+                className="w-full p-2.5 rounded-xl border border-border bg-background text-xs font-bold text-foreground cursor-pointer focus:outline-none"
+              >
+                <option value="Crown">Crown Fabrication</option>
+                <option value="Bridge">Multi-Unit Bridge</option>
+                <option value="Implant Abutment">Implant Abutment & Crown</option>
+                <option value="Full Denture">Full Arch Denture</option>
+                <option value="Partial Denture">Flexible Partial Denture</option>
+                <option value="Clear Aligners">Clear Aligners Set</option>
+                <option value="CBCT 3D Scan">CBCT 3D Radiography Scan</option>
+                <option value="Intraoral Impression">Digital 3D Impression Scan</option>
+              </select>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground block">Material Selection *</label>
+              <select
+                value={labMaterial}
+                onChange={(e) => setLabMaterial(e.target.value)}
+                className="w-full p-2.5 rounded-xl border border-border bg-background text-xs font-bold text-foreground cursor-pointer focus:outline-none"
+              >
+                <option value="Zirconia">Monolithic Zirconia (High Translucency)</option>
+                <option value="E-Max Ceramic">IPS e.max Lithium Disilicate</option>
+                <option value="PFM">PFM (Porcelain Fused to Metal)</option>
+                <option value="Composite">Nanocomposite Resin</option>
+                <option value="Acrylic">High-Impact Acrylic</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground block">VITA Shade Guide *</label>
+              <select
+                value={labShade}
+                onChange={(e) => setLabShade(e.target.value)}
+                className="w-full p-2.5 rounded-xl border border-border bg-background text-xs font-bold text-foreground cursor-pointer focus:outline-none"
+              >
+                {['A1','A2','A3','A3.5','A4','B1','B2','B3','B4','C1','C2','D2','OM1 (Bleach)','OM2 (Bleach)'].map(s => (
+                  <option key={s} value={s}>Shade {s}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground block">Target Tooth Number *</label>
+              <select
+                value={labToothNumber}
+                onChange={(e) => setLabToothNumber(e.target.value)}
+                className="w-full p-2.5 rounded-xl border border-border bg-background text-xs font-bold text-foreground cursor-pointer focus:outline-none"
+              >
+                {Array.from({ length: 32 }, (_, i) => i + 1).map(num => (
+                  <option key={num} value={num}>Tooth #{num}</option>
+                ))}
+                <option value="Upper Arch">Upper Arch (Maxillary)</option>
+                <option value="Lower Arch">Lower Arch (Mandibular)</option>
+                <option value="Both Arches">Both Arches</option>
+              </select>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground block">Lab Vendor Partner *</label>
+              <select
+                value={labVendor}
+                onChange={(e) => setLabVendor(e.target.value)}
+                className="w-full p-2.5 rounded-xl border border-border bg-background text-xs font-bold text-foreground cursor-pointer focus:outline-none"
+              >
+                {dynamicLabVendors.map((vendor) => (
+                  <option key={vendor} value={vendor}>
+                    {vendor}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Input
+              label="Estimated Cost ($ USD)"
+              type="number"
+              value={labCost}
+              onChange={(e) => setLabCost(e.target.value)}
+              placeholder="e.g. 350"
+              required
+            />
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground block">Requested Turnaround Date *</label>
+              <input
+                type="date"
+                value={labExpectedDate}
+                onChange={(e) => setLabExpectedDate(e.target.value)}
+                min={new Date().toISOString().split('T')[0]}
+                className="w-full p-2.5 rounded-xl border border-border bg-background text-xs font-bold text-foreground cursor-pointer focus:outline-none"
+                required
+              />
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground block">Clinical & Occlusal Instructions</label>
+            <textarea
+              value={labNotes}
+              onChange={(e) => setLabNotes(e.target.value)}
+              rows={3}
+              placeholder="e.g. Tight contacts requested, characterization on incisal edge, high translucency Zirconia..."
+              className="w-full p-3 rounded-xl border border-border bg-background text-xs font-medium text-foreground focus:outline-none resize-none"
+            />
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2 border-t border-border">
+            <Button type="button" variant="outline" onClick={() => setIsLabModalOpen(false)}>Cancel</Button>
+            <Button
+              type="submit"
+              onClick={handleSubmitLabOrder}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold cursor-pointer"
+            >
+              🚀 Dispatch Lab Requisition
+            </Button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }
@@ -844,17 +1182,209 @@ function DentalChartTab({ patientId }) {
   // Check if this tooth has a treatment plan entry
   const getToothPlan = (num) => plans.find(p => String(p.tooth) === String(num));
 
+  const isUpper = (num) => {
+    const numStr = String(num);
+    const primaryUpper = ['A','B','C','D','E','F','G','H','I','J'];
+    if (primaryUpper.includes(numStr)) return true;
+    
+    const numInt = parseInt(numStr, 10);
+    if (!isNaN(numInt)) {
+      return numInt >= 1 && numInt <= 16;
+    }
+    return false;
+  };
+
+  const getToothCategory = (num) => {
+    const numStr = String(num);
+    const primaryAnterior = ['C','D','E','F','G','H','M','N','O','P','Q','R'];
+    const primaryMolar = ['A','B','I','J','K','L','S','T'];
+    
+    if (primaryAnterior.includes(numStr)) return 'anterior';
+    if (primaryMolar.includes(numStr)) return 'molar';
+    
+    const numInt = parseInt(numStr, 10);
+    if (!isNaN(numInt)) {
+      const anterior = [6, 7, 8, 9, 10, 11, 22, 23, 24, 25, 26, 27];
+      const premolar = [4, 5, 12, 13, 20, 21, 28, 29];
+      const molar = [1, 2, 3, 14, 15, 16, 17, 18, 19, 30, 31, 32];
+      
+      if (anterior.includes(numInt)) return 'anterior';
+      if (premolar.includes(numInt)) return 'premolar';
+      if (molar.includes(numInt)) return 'molar';
+    }
+    return 'premolar';
+  };
+
+  const renderToothSvg = (num, state) => {
+    const category = getToothCategory(num);
+    const upper = isUpper(num);
+    
+    const hasB = state.surfaces.includes('B') || state.surfaces.includes('F');
+    const hasL = state.surfaces.includes('L');
+    const hasM = state.surfaces.includes('M');
+    const hasD = state.surfaces.includes('D');
+    const hasO = state.surfaces.includes('O') || state.surfaces.includes('I');
+    
+    const getActiveFillColor = (cond) => {
+      if (cond === 'Composite Filling' || cond === 'Amalgam' || cond === 'Filling') {
+        return 'fill-emerald-500';
+      }
+      if (cond === 'Crown') {
+        return 'fill-amber-500';
+      }
+      if (cond === 'Bridge') {
+        return 'fill-cyan-500';
+      }
+      if (cond === 'Implant') {
+        return 'fill-indigo-500';
+      }
+      if (cond === 'RCT') {
+        return 'fill-purple-500';
+      }
+      return 'fill-rose-500';
+    };
+
+    const activeFill = getActiveFillColor(state.condition);
+    const fillB = hasB ? activeFill : 'fill-white/95 dark:fill-slate-900/95';
+    const fillL = hasL ? activeFill : 'fill-white/95 dark:fill-slate-900/95';
+    const fillM = hasM ? activeFill : 'fill-white/95 dark:fill-slate-900/95';
+    const fillD = hasD ? activeFill : 'fill-white/95 dark:fill-slate-900/95';
+    const fillO = hasO ? activeFill : 'fill-white/95 dark:fill-slate-900/95';
+    
+    const strokeClass = "stroke-slate-400 dark:stroke-slate-600";
+    const bgOutlineClass = "fill-amber-50/50 dark:fill-slate-800/50 stroke-slate-400 dark:stroke-slate-600";
+
+    if (category === 'molar') {
+      if (upper) {
+        return (
+          <svg viewBox="0 0 40 40" className="w-[36px] h-[36px] mt-1 select-none flex-shrink-0">
+            {/* Background Molar Outline (Roots pointing UP) */}
+            <path d="M 10,36 C 8,36 6,34 6,28 C 6,22 8,18 12,18 C 11,14 10,8 10,2 C 10,0 12,0 13,2 C 15,8 17,12 20,18 C 23,12 25,8 27,2 C 28,0 30,0 30,2 C 30,8 29,14 28,18 C 32,18 34,22 34,28 C 34,34 32,36 30,36 Z" className={bgOutlineClass} strokeWidth="1" />
+            {/* Buccal */}
+            <path d="M 12,18 L 28,18 L 24,24 L 16,24 Z" className={`${fillB} ${strokeClass}`} strokeWidth="0.8" />
+            {/* Distal */}
+            <path d="M 28,18 L 30,36 L 24,30 L 24,24 Z" className={`${fillD} ${strokeClass}`} strokeWidth="0.8" />
+            {/* Lingual */}
+            <path d="M 30,36 L 10,36 L 16,30 L 24,30 Z" className={`${fillL} ${strokeClass}`} strokeWidth="0.8" />
+            {/* Mesial */}
+            <path d="M 10,36 L 12,18 L 16,24 L 16,30 Z" className={`${fillM} ${strokeClass}`} strokeWidth="0.8" />
+            {/* Occlusal */}
+            <path d="M 16,24 H 24 V 30 H 16 Z" className={`${fillO} ${strokeClass}`} strokeWidth="0.8" />
+          </svg>
+        );
+      } else {
+        return (
+          <svg viewBox="0 0 40 40" className="w-[36px] h-[36px] mt-1 select-none flex-shrink-0">
+            {/* Background Molar Outline (Roots pointing DOWN) */}
+            <path d="M 10,4 C 8,4 6,6 6,12 C 6,18 8,22 12,22 C 11,26 10,32 10,38 C 10,40 12,40 13,38 C 15,32 17,28 20,22 C 23,28 25,32 27,38 C 28,40 30,40 30,38 C 30,32 29,26 28,22 C 32,22 34,18 34,12 C 34,6 32,4 30,4 Z" className={bgOutlineClass} strokeWidth="1" />
+            {/* Buccal */}
+            <path d="M 10,4 L 30,4 L 24,10 L 16,10 Z" className={`${fillB} ${strokeClass}`} strokeWidth="0.8" />
+            {/* Distal */}
+            <path d="M 30,4 L 28,22 L 24,16 L 24,10 Z" className={`${fillD} ${strokeClass}`} strokeWidth="0.8" />
+            {/* Lingual */}
+            <path d="M 28,22 L 12,22 L 16,16 L 24,16 Z" className={`${fillL} ${strokeClass}`} strokeWidth="0.8" />
+            {/* Mesial */}
+            <path d="M 12,22 L 10,4 L 16,10 L 16,16 Z" className={`${fillM} ${strokeClass}`} strokeWidth="0.8" />
+            {/* Occlusal */}
+            <path d="M 16,10 H 24 V 16 H 16 Z" className={`${fillO} ${strokeClass}`} strokeWidth="0.8" />
+          </svg>
+        );
+      }
+    } else if (category === 'anterior') {
+      if (upper) {
+        return (
+          <svg viewBox="0 0 40 40" className="w-[28px] h-[36px] mt-1 select-none flex-shrink-0">
+            {/* Background Anterior Outline (Roots pointing UP) */}
+            <path d="M 14,36 C 11,36 9,33 9,27 C 9,21 12,18 14,18 C 13,12 14,6 17,2 C 19,0 21,0 23,2 C 26,6 27,12 26,18 C 28,18 31,21 31,27 C 31,33 29,36 26,36 Z" className={bgOutlineClass} strokeWidth="1" />
+            {/* Buccal */}
+            <path d="M 14,18 L 26,18 L 24,24 L 16,24 Z" className={`${fillB} ${strokeClass}`} strokeWidth="0.8" />
+            {/* Distal */}
+            <path d="M 26,18 L 26,36 L 24,27 L 24,24 Z" className={`${fillD} ${strokeClass}`} strokeWidth="0.8" />
+            {/* Lingual */}
+            <path d="M 26,36 L 14,36 L 16,27 L 24,27 Z" className={`${fillL} ${strokeClass}`} strokeWidth="0.8" />
+            {/* Mesial */}
+            <path d="M 14,36 L 14,18 L 16,24 L 16,27 Z" className={`${fillM} ${strokeClass}`} strokeWidth="0.8" />
+            {/* Incisal */}
+            <path d="M 16,24 H 24 V 27 H 16 Z" className={`${fillO} ${strokeClass}`} strokeWidth="0.8" />
+          </svg>
+        );
+      } else {
+        return (
+          <svg viewBox="0 0 40 40" className="w-[28px] h-[36px] mt-1 select-none flex-shrink-0">
+            {/* Background Anterior Outline (Roots pointing DOWN) */}
+            <path d="M 14,4 C 11,4 9,7 9,13 C 9,19 12,22 14,22 C 13,28 14,34 17,38 C 19,40 21,40 23,38 C 26,34 27,28 26,22 C 28,22 31,19 31,13 C 31,7 29,4 26,4 Z" className={bgOutlineClass} strokeWidth="1" />
+            {/* Buccal */}
+            <path d="M 14,4 L 26,4 L 24,13 L 16,13 Z" className={`${fillB} ${strokeClass}`} strokeWidth="0.8" />
+            {/* Distal */}
+            <path d="M 26,4 L 26,22 L 24,16 L 24,13 Z" className={`${fillD} ${strokeClass}`} strokeWidth="0.8" />
+            {/* Lingual */}
+            <path d="M 26,22 L 14,22 L 16,16 L 24,16 Z" className={`${fillL} ${strokeClass}`} strokeWidth="0.8" />
+            {/* Mesial */}
+            <path d="M 14,22 L 14,4 L 16,13 L 16,16 Z" className={`${fillM} ${strokeClass}`} strokeWidth="0.8" />
+            {/* Incisal */}
+            <path d="M 16,13 H 24 V 16 H 16 Z" className={`${fillO} ${strokeClass}`} strokeWidth="0.8" />
+          </svg>
+        );
+      }
+    } else {
+      // premolar
+      if (upper) {
+        return (
+          <svg viewBox="0 0 40 40" className="w-[32px] h-[32px] mt-1 select-none flex-shrink-0">
+            {/* Background Premolar Outline (Roots pointing UP) */}
+            <path d="M 12,36 C 9,36 7,34 7,27 C 7,21 11,18 13,18 C 12,12 13,6 16,2 C 18,0 22,0 24,2 C 27,6 28,12 27,18 C 29,18 33,21 33,27 C 33,34 31,36 28,36 Z" className={bgOutlineClass} strokeWidth="1" />
+            {/* Buccal */}
+            <path d="M 13,18 L 27,18 L 23,24 L 17,24 Z" className={`${fillB} ${strokeClass}`} strokeWidth="0.8" />
+            {/* Distal */}
+            <path d="M 27,18 L 28,36 L 23,30 L 23,24 Z" className={`${fillD} ${strokeClass}`} strokeWidth="0.8" />
+            {/* Lingual */}
+            <path d="M 28,36 L 12,36 L 17,30 L 23,30 Z" className={`${fillL} ${strokeClass}`} strokeWidth="0.8" />
+            {/* Mesial */}
+            <path d="M 12,36 L 13,18 L 17,24 L 17,30 Z" className={`${fillM} ${strokeClass}`} strokeWidth="0.8" />
+            {/* Occlusal */}
+            <path d="M 17,24 H 23 V 30 H 17 Z" className={`${fillO} ${strokeClass}`} strokeWidth="0.8" />
+          </svg>
+        );
+      } else {
+        return (
+          <svg viewBox="0 0 40 40" className="w-[32px] h-[32px] mt-1 select-none flex-shrink-0">
+            {/* Background Premolar Outline (Roots pointing DOWN) */}
+            <path d="M 12,4 C 9,4 7,6 7,13 C 7,19 11,22 13,22 C 12,28 13,34 16,38 C 18,40 22,40 24,38 C 27,34 28,28 27,22 C 29,22 33,19 33,13 C 33,6 31,4 28,4 Z" className={bgOutlineClass} strokeWidth="1" />
+            {/* Buccal */}
+            <path d="M 12,4 L 28,4 L 23,10 L 17,10 Z" className={`${fillB} ${strokeClass}`} strokeWidth="0.8" />
+            {/* Distal */}
+            <path d="M 28,4 L 27,22 L 23,16 L 23,10 Z" className={`${fillD} ${strokeClass}`} strokeWidth="0.8" />
+            {/* Lingual */}
+            <path d="M 27,22 L 13,22 L 17,16 L 23,16 Z" className={`${fillL} ${strokeClass}`} strokeWidth="0.8" />
+            {/* Mesial */}
+            <path d="M 13,22 L 12,4 L 17,10 L 17,16 Z" className={`${fillM} ${strokeClass}`} strokeWidth="0.8" />
+            {/* Occlusal */}
+            <path d="M 17,10 H 23 V 16 H 17 Z" className={`${fillO} ${strokeClass}`} strokeWidth="0.8" />
+          </svg>
+        );
+      }
+    }
+  };
+
   const renderToothCell = (num) => {
     const state = getToothState(patientChart[num]);
     const colorClasses = getConditionColor(state.condition);
     const isMissing = state.condition === 'Missing';
     const hasPlan = !!getToothPlan(num);
+    const category = getToothCategory(num);
+
+    let cardRadiusClass = "rounded-xl";
+    if (category === 'anterior') {
+      cardRadiusClass = "rounded-t-[22px] rounded-b-[8px]";
+    } else if (category === 'premolar') {
+      cardRadiusClass = "rounded-[12px]";
+    }
 
     return (
       <button
         key={num}
         onClick={() => handleToothClick(num)}
-        className={`p-1.5 border rounded-xl flex flex-col items-center justify-between text-xs font-black transition-all cursor-pointer hover:scale-105 shadow-sm min-h-[80px] relative ${colorClasses}`}
+        className={`p-1.5 border flex flex-col items-center justify-between text-xs font-black transition-all cursor-pointer hover:scale-105 shadow-sm min-h-[90px] relative ${cardRadiusClass} ${colorClasses}`}
         title={`Tooth ${typeof num === 'number' ? '#' : ''}${num} (${state.condition}${state.watch ? ' - WATCH' : ''})`}
       >
         {/* Watch badge */}
@@ -870,15 +1400,9 @@ function DentalChartTab({ patientId }) {
 
         {/* Surface Visual */}
         {!isMissing ? (
-          <div className="w-7 h-7 relative mt-1 border border-border/40 bg-muted/40 rounded flex items-center justify-center overflow-hidden">
-            <div className={`absolute top-0 inset-x-0 h-1.5 border-b border-border/30 ${state.surfaces.includes('B') ? 'bg-rose-500/70' : ''}`} />
-            <div className={`absolute bottom-0 inset-x-0 h-1.5 border-t border-border/30 ${state.surfaces.includes('L') ? 'bg-rose-500/70' : ''}`} />
-            <div className={`absolute left-0 inset-y-0 w-1.5 border-r border-border/30 ${state.surfaces.includes('M') ? 'bg-rose-500/70' : ''}`} />
-            <div className={`absolute right-0 inset-y-0 w-1.5 border-l border-border/30 ${state.surfaces.includes('D') ? 'bg-rose-500/70' : ''}`} />
-            <div className={`w-2.5 h-2.5 border border-border/30 rounded-sm ${state.surfaces.includes('O') || state.surfaces.includes('I') ? 'bg-rose-500/90' : 'bg-background/80'}`} />
-          </div>
+          renderToothSvg(num, state)
         ) : (
-          <span className="text-[10px] text-destructive line-through my-1.5 font-black">X</span>
+          <span className="text-[10px] text-destructive line-through my-2.5 font-black">X</span>
         )}
 
         <span className="text-[6.5px] uppercase font-semibold truncate max-w-full opacity-80 mt-0.5 leading-none">
@@ -1835,8 +2359,10 @@ function PrescriptionTab({ patientId }) {
       toast.error('Please select or add a medication first');
       return;
     }
-    addPrescription(patientId, { drug, dosage, frequency, duration });
-    toast.success(`Prescribed: ${drug}`);
+    const signedBy = "Dr. Arthur Vance, DDS (DEA Verified)";
+    const signedAt = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    addPrescription(patientId, { drug, dosage, frequency, duration, signedBy, signedAt });
+    toast.success(`Prescribed with E-Signature: ${drug}`);
   };
 
   const handleDeleteRx = (rxId) => {
@@ -1916,8 +2442,22 @@ function PrescriptionTab({ patientId }) {
             required
             placeholder="e.g. 7 days"
           />
-          <Button type="submit" className="w-full font-bold h-11 mt-4">
-            Prescribe Medication
+
+          {/* Doctor Digital E-Signature Stamp */}
+          <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl space-y-1 text-left">
+            <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-extrabold text-[10px] uppercase">
+              <ShieldCheck className="h-3.5 w-3.5" /> E-Signature Verified Stamp
+            </div>
+            <p className="text-[10.5px] font-bold text-foreground font-serif italic">
+              Dr. Arthur Vance, DDS
+            </p>
+            <p className="text-[9px] text-muted-foreground font-mono">
+              DEA #: DV-8941029 &bull; State License: #US-DE-4412
+            </p>
+          </div>
+
+          <Button type="submit" className="w-full font-bold h-11 mt-4 bg-emerald-600 hover:bg-emerald-700">
+            ✍️ Issue E-Signed Prescription
           </Button>
         </form>
       </div>
@@ -1926,13 +2466,16 @@ function PrescriptionTab({ patientId }) {
       <div className="lg:col-span-2 bg-card border border-border p-5 rounded-2xl shadow-sm text-left space-y-4">
         <h3 className="font-black text-sm uppercase text-primary tracking-wider border-b border-border pb-3">Prescription History</h3>
 
-        <div className="space-y-3 max-h-[350px] overflow-y-auto pr-1">
+        <div className="space-y-3 max-h-[420px] overflow-y-auto pr-1">
           {list.length > 0 ? (
             list.map((rx) => (
               <div key={rx.id} className="p-3.5 bg-muted/40 border border-border rounded-xl flex items-center justify-between hover:bg-muted/70 transition-colors">
-                <div className="space-y-0.5 text-xs text-left">
+                <div className="space-y-1 text-xs text-left">
                   <span className="font-extrabold text-foreground block">{rx.drug} &bull; <span className="text-muted-foreground font-semibold">({rx.date})</span></span>
                   <span className="text-[10px] text-muted-foreground block font-bold">Instructions: {rx.dosage} &bull; {rx.frequency} &bull; {rx.duration}</span>
+                  <span className="inline-flex items-center gap-1 text-[9px] font-black text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-md">
+                    ✍️ E-Signed: {rx.signedBy || 'Dr. Arthur Vance, DDS'} {rx.signedAt ? `at ${rx.signedAt}` : ''}
+                  </span>
                 </div>
                 <Button size="icon" variant="ghost" onClick={() => handleDeleteRx(rx.id)} className="h-8 w-8 text-destructive rounded-full">
                   <Trash2 className="h-4 w-4" />
@@ -1977,6 +2520,7 @@ function NotesTab({ patientId }) {
   const { notes, saveClinicalNote, clinicalTemplates, addClinicalTemplate } = useDentistStore();
   const rawClinicalNotes = useDentistStore((state) => state.clinicalNotes[patientId]);
   const clinicalNotes = rawClinicalNotes || [];
+  const { labCases, addCaseComment } = useLabStore();
   const toast = useToast();
   
   const patients = useDentistStore((state) => state.patients);
@@ -2262,18 +2806,120 @@ function NotesTab({ patientId }) {
         ) : (
           <div className="space-y-4 max-h-[400px] overflow-y-auto pr-1">
             {clinicalNotes.map((note) => (
-              <div key={note.id} className="p-4 bg-muted/30 border border-border rounded-xl space-y-2 text-xs">
+              <div key={note.id || note.createdAt} className="p-4 bg-muted/30 border border-border rounded-xl space-y-2 text-xs">
                 <div className="flex justify-between items-center text-[10px] text-muted-foreground font-bold border-b border-border/40 pb-1.5">
-                  <span>{new Date(note.createdAt).toLocaleString()}</span>
+                  <span>{new Date(note.createdAt || Date.now()).toLocaleString()}</span>
                   <span className="text-primary font-black uppercase">
-                    {note.authorName} ({note.authorRole === 'dental_assistant' ? 'Assistant' : note.authorRole === 'hygienist' ? 'Hygienist' : note.authorRole === 'dentist' ? 'Dentist' : note.authorRole})
+                    {note.authorName || 'Practitioner'} ({note.authorRole === 'dental_assistant' ? 'Assistant' : note.authorRole === 'hygienist' ? 'Hygienist' : note.authorRole === 'dentist' ? 'Dentist' : note.authorRole || 'Clinic Staff'})
                   </span>
                 </div>
-                <p className="font-semibold text-foreground leading-normal whitespace-pre-wrap">{note.content}</p>
+                <p className="font-semibold text-foreground leading-normal whitespace-pre-wrap">{note.content || note.text}</p>
               </div>
             ))}
           </div>
         )}
+      </div>
+
+      {/* Lab Technician & Doctor Discussion Notes */}
+      <div className="bg-card border border-border p-5 rounded-2xl shadow-sm text-left space-y-4 mt-6">
+        <div className="flex items-center justify-between border-b border-border pb-3">
+          <h3 className="font-black text-sm uppercase text-indigo-500 tracking-wider flex items-center gap-2">
+            <FlaskConical className="h-4.5 w-4.5 text-indigo-500" />
+            Lab Technician & Doctor Discussion Notes Thread
+          </h3>
+          <Badge variant="info" className="font-bold">
+            {labCases.filter(c => c.patientId === patientId).length} Active Orders
+          </Badge>
+        </div>
+
+        {(() => {
+          const patientLabCases = labCases.filter(c => c.patientId === patientId);
+          if (patientLabCases.length === 0) {
+            return (
+              <p className="text-xs text-muted-foreground font-semibold italic py-4">
+                No active lab cases created for this patient file yet. Use "+ Request Digital Lab Work" to dispatch orders.
+              </p>
+            );
+          }
+
+          return (
+            <div className="space-y-4">
+              {patientLabCases.map((lc) => {
+                const commentsList = Array.isArray(lc.comments) ? lc.comments : [];
+                return (
+                  <div key={lc.id} className="p-4 bg-muted/40 border border-border rounded-2xl space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 pb-2">
+                      <div>
+                        <span className="font-extrabold text-xs text-foreground block">{lc.type}</span>
+                        <span className="text-[10px] text-muted-foreground font-semibold">
+                          Lab: <strong>{lc.labName}</strong> &bull; Case ID: <span className="font-mono">#{lc.id}</span>
+                        </span>
+                      </div>
+                      <Badge variant="secondary" className="font-bold">{lc.status}</Badge>
+                    </div>
+
+                    {/* Comments Thread */}
+                    <div className="space-y-2">
+                      <span className="text-[10px] font-black uppercase text-muted-foreground tracking-wider block">Live Discussion Log</span>
+                      {commentsList.length > 0 ? (
+                        <div className="space-y-2 max-h-48 overflow-y-auto">
+                          {commentsList.map((cm) => (
+                            <div key={cm.id} className="p-3 bg-card border border-border rounded-xl space-y-1">
+                              <div className="flex items-center justify-between text-[10px]">
+                                <span className="font-black text-indigo-600 dark:text-indigo-400">
+                                  {cm.authorName} <span className="text-muted-foreground font-normal">({cm.authorRole})</span>
+                                </span>
+                                <span className="text-muted-foreground font-mono text-[9px]">
+                                  {new Date(cm.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                              </div>
+                              <p className="text-xs text-foreground font-medium">{cm.text}</p>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-[10px] text-muted-foreground italic bg-card/60 p-3 rounded-xl border border-border/40">
+                          No discussion notes posted yet by Lab Technician.
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Doctor Quick Reply Box */}
+                    <div className="flex items-center gap-2 pt-1">
+                      <input
+                        type="text"
+                        placeholder="Type Doctor instruction / response to Lab Technician..."
+                        id={`reply-input-${lc.id}`}
+                        className="flex-1 p-2 bg-background border border-border rounded-xl text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-primary"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && e.target.value.trim()) {
+                            addCaseComment(lc.id, e.target.value.trim(), 'Dr. Arthur Vance, DDS', 'Dentist');
+                            toast.success('Doctor note sent to Lab Technician.');
+                            e.target.value = '';
+                          }
+                        }}
+                      />
+                      <Button
+                        size="sm"
+                        onClick={() => {
+                          const input = document.getElementById(`reply-input-${lc.id}`);
+                          if (input && input.value.trim()) {
+                            addCaseComment(lc.id, input.value.trim(), 'Dr. Arthur Vance, DDS', 'Dentist');
+                            toast.success('Doctor note sent to Lab Technician.');
+                            input.value = '';
+                          }
+                        }}
+                        className="font-bold text-xs h-8 bg-indigo-600 hover:bg-indigo-700 text-white cursor-pointer"
+                      >
+                        Post Note
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
       </div>
 
       {/* Custom Template Modal */}
@@ -2507,17 +3153,8 @@ function AICopilotTab({ patientId }) {
   );
 }
 
-// 8. MEDICAL HISTORY TAB
+// 8. MEDICAL HISTORY TAB (READ-ONLY — Dentist View)
 function MedicalHistoryTab({ patient }) {
-  const toast = useToast();
-  const { fetchPatients, fetchPatientDetails } = useDentistStore();
-  const [loading, setLoading] = useState(false);
-
-  // Form states
-  const [allergies, setAllergies] = useState(Array.isArray(patient.allergies) ? patient.allergies.join(', ') : (patient.allergies || ''));
-  const [vitals, setVitals] = useState(patient.vitals || '');
-  const [history, setHistory] = useState(patient.history || '');
-
   // Parse existing JSON fields or fallback
   const parseJsonField = (field) => {
     if (!field) return {};
@@ -2527,256 +3164,241 @@ function MedicalHistoryTab({ patient }) {
     return field;
   };
 
-  const currentConditions = parseJsonField(patient.medicalConditions);
-  const currentMedications = parseJsonField(patient.activeMedications);
+  const allergiesDisplay = Array.isArray(patient.allergies)
+    ? patient.allergies.join(', ')
+    : (patient.allergies || 'None on record');
+  const vitalsDisplay = patient.vitals || 'Not recorded';
+  const historyDisplay = patient.history || 'No history notes recorded.';
 
-  const [conditions, setConditions] = useState({
-    diabetes: !!currentConditions.diabetes,
-    hypertension: !!currentConditions.hypertension,
-    heartDisease: !!currentConditions.heartDisease,
-    bleedingDisorder: !!currentConditions.bleedingDisorder,
-    pregnancy: !!currentConditions.pregnancy,
-    asthma: !!currentConditions.asthma,
-    epilepsy: !!currentConditions.epilepsy,
-    hepatitis: !!currentConditions.hepatitis,
-    other: currentConditions.other || ''
-  });
+  const conditions = parseJsonField(patient.medicalConditions);
+  const meds = parseJsonField(patient.activeMedications);
 
-  const [meds, setMeds] = useState({
-    anticoagulants: !!currentMedications.anticoagulants,
-    bisphosphonates: !!currentMedications.bisphosphonates,
-    aspirin: !!currentMedications.aspirin,
-    immunosuppressants: !!currentMedications.immunosuppressants,
-    others: currentMedications.others || ''
-  });
+  const conditionList = [
+    ['diabetes',       'Diabetes Mellitus'],
+    ['hypertension',   'Hypertension'],
+    ['heartDisease',   'Heart Disease'],
+    ['bleedingDisorder','Bleeding Disorder'],
+    ['pregnancy',      'Pregnancy Status'],
+    ['asthma',         'Asthma / COPD'],
+    ['epilepsy',       'Epilepsy / Seizures'],
+    ['hepatitis',      'Hepatitis / Liver Disease'],
+  ];
 
-  const [physicianName, setPhysicianName] = useState(currentConditions.physicianName || '');
-  const [physicianPhone, setPhysicianPhone] = useState(currentConditions.physicianPhone || '');
-  const [emergencyContact, setEmergencyContact] = useState(currentConditions.emergencyContact || '');
-  const [emergencyPhone, setEmergencyPhone] = useState(currentConditions.emergencyPhone || '');
+  const medList = [
+    ['anticoagulants',     'Blood Thinners / Anticoagulant'],
+    ['bisphosphonates',    'Bisphosphonates (Bone)'],
+    ['aspirin',            'Daily Aspirin Therapy'],
+    ['immunosuppressants', 'Immunosuppressive Drugs'],
+  ];
 
-  const handleSave = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-
-    const updatedConditions = {
-      ...conditions,
-      physicianName,
-      physicianPhone,
-      emergencyContact,
-      emergencyPhone
-    };
-
-    const payload = {
-      allergies: allergies.split(',').map(s => s.trim()).filter(Boolean).join(', '),
-      vitals,
-      history,
-      medicalConditions: updatedConditions,
-      activeMedications: meds
-    };
-
-    try {
-      const { data } = await api.put(`/patients/${patient.id}`, payload);
-      if (data.success) {
-        toast.success('Patient medical history file updated successfully.');
-        await fetchPatients();
-        await fetchPatientDetails(patient.id);
-      } else {
-        toast.error(data.message || 'Failed to update medical history.');
-      }
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Error updating medical file.');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const activeConditions = conditionList.filter(([key]) => !!conditions[key]);
+  const activeMeds = medList.filter(([key]) => !!meds[key]);
 
   return (
-    <div className="space-y-6 py-4 text-left">
-      <form onSubmit={handleSave} className="space-y-6">
-        {/* Core clinical info */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-          <div className="bg-card border border-border p-5 rounded-2xl shadow-sm space-y-4">
-            <h3 className="font-black text-sm uppercase text-primary tracking-wider border-b border-border pb-3 flex items-center gap-2">
-              <HeartPulse className="h-4.5 w-4.5 text-rose-500 animate-pulse" /> Vitals & Allergies
-            </h3>
-            
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">Allergies (comma-separated)</label>
-              <input
-                type="text"
-                value={allergies}
-                onChange={e => setAllergies(e.target.value)}
-                placeholder="e.g. Penicillin, Latex, Sulfa, Aspirin"
-                className="w-full text-xs font-semibold bg-muted border border-border rounded-xl p-2.5 focus:outline-none text-foreground"
-              />
+    <div className="space-y-5 py-4 text-left">
+
+      {/* Read-Only Notice Banner */}
+      <div className="flex items-start gap-3 bg-blue-500/10 border border-blue-500/20 text-blue-600 dark:text-blue-400 p-4 rounded-2xl">
+        <Info className="h-5 w-5 shrink-0 mt-0.5" />
+        <div>
+          <p className="text-xs font-black uppercase tracking-wider">Clinical Reference — View Only</p>
+          <p className="text-[11px] font-semibold mt-0.5 leading-relaxed">
+            This medical history is managed by the <strong>Front Desk</strong> during patient registration and intake.
+            To update any information, please ask the Front Desk staff to edit the patient record.
+          </p>
+        </div>
+      </div>
+
+      {/* Vitals & Allergies + Systemic Conditions */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+
+        {/* Vitals & Allergies */}
+        <div className="bg-card border border-border p-5 rounded-2xl shadow-sm space-y-4">
+          <h3 className="font-black text-sm uppercase text-primary tracking-wider border-b border-border pb-3 flex items-center gap-2">
+            <HeartPulse className="h-4 w-4 text-rose-500 animate-pulse" /> Vitals & Allergies
+          </h3>
+
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">Allergies</span>
+              <div className={`text-xs font-bold px-3 py-2 rounded-xl border ${allergiesDisplay === 'None' || allergiesDisplay === 'None on record' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400' : 'bg-rose-500/10 border-rose-500/20 text-rose-600 dark:text-rose-400'}`}>
+                {allergiesDisplay}
+              </div>
             </div>
 
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">Current Vitals</label>
-              <input
-                type="text"
-                value={vitals}
-                onChange={e => setVitals(e.target.value)}
-                placeholder="e.g. BP: 120/80 mmHg, Pulse: 72 bpm, Temp: 98.6 F"
-                className="w-full text-xs font-semibold bg-muted border border-border rounded-xl p-2.5 focus:outline-none text-foreground"
-              />
+            <div className="space-y-1">
+              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">Current Vitals</span>
+              <div className="text-xs font-bold px-3 py-2 rounded-xl border bg-muted/40 border-border text-foreground">
+                {vitalsDisplay}
+              </div>
             </div>
 
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">Medical History Summary / Notes</label>
-              <textarea
-                value={history}
-                onChange={e => setHistory(e.target.value)}
-                placeholder="Describe any chronic illnesses, hospitalizations, or surgical operations..."
-                rows={3}
-                className="w-full text-xs font-semibold bg-muted border border-border rounded-xl p-2.5 focus:outline-none text-foreground resize-none"
-              />
+            <div className="space-y-1">
+              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">Medical History Summary / Notes</span>
+              <div className="text-xs font-semibold px-3 py-2.5 rounded-xl border bg-muted/40 border-border text-foreground leading-relaxed min-h-[52px]">
+                {historyDisplay}
+              </div>
             </div>
           </div>
+        </div>
 
-          <div className="bg-card border border-border p-5 rounded-2xl shadow-sm space-y-4">
-            <h3 className="font-black text-sm uppercase text-primary tracking-wider border-b border-border pb-3 flex items-center gap-2">
-              <ShieldAlert className="h-4.5 w-4.5 text-primary" /> Systemic Medical Conditions
-            </h3>
-            
-            <div className="grid grid-cols-2 gap-3 text-xs font-semibold">
-              {[
-                ['diabetes', 'Diabetes Mellitus'],
-                ['hypertension', 'Hypertension'],
-                ['heartDisease', 'Heart Disease'],
-                ['bleedingDisorder', 'Bleeding Disorder'],
-                ['pregnancy', 'Pregnancy Status'],
-                ['asthma', 'Asthma / COPD'],
-                ['epilepsy', 'Epilepsy / Seizures'],
-                ['hepatitis', 'Hepatitis / Liver Disease'],
-              ].map(([key, label]) => (
-                <label key={key} className="flex items-center gap-2.5 p-2 bg-muted/40 border border-border/40 rounded-xl hover:bg-muted/70 transition-colors cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={conditions[key]}
-                    onChange={e => setConditions(prev => ({ ...prev, [key]: e.target.checked }))}
-                    className="rounded text-primary focus:ring-primary/40 h-4 w-4 cursor-pointer"
-                  />
-                  <span>{label}</span>
-                </label>
+        {/* Systemic Conditions */}
+        <div className="bg-card border border-border p-5 rounded-2xl shadow-sm space-y-4">
+          <h3 className="font-black text-sm uppercase text-primary tracking-wider border-b border-border pb-3 flex items-center gap-2">
+            <ShieldAlert className="h-4 w-4 text-primary" /> Systemic Medical Conditions
+          </h3>
+
+          {activeConditions.length > 0 ? (
+            <div className="flex flex-wrap gap-2">
+              {activeConditions.map(([key, label]) => (
+                <span key={key} className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-500/10 border border-rose-500/20 text-rose-600 dark:text-rose-400 text-[11px] font-bold rounded-xl">
+                  <AlertTriangle className="h-3 w-3" /> {label}
+                </span>
               ))}
             </div>
-
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">Other Systemic Diseases / Details</label>
-              <input
-                type="text"
-                value={conditions.other}
-                onChange={e => setConditions(prev => ({ ...prev, other: e.target.value }))}
-                placeholder="Describe other systemic health issues..."
-                className="w-full text-xs font-semibold bg-muted border border-border rounded-xl p-2.5 focus:outline-none text-foreground"
-              />
+          ) : (
+            <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 text-xs font-bold">
+              <Check className="h-4 w-4" /> No systemic conditions on record
             </div>
-          </div>
-        </div>
+          )}
 
-        {/* Medications & emergency contacts */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-          <div className="bg-card border border-border p-5 rounded-2xl shadow-sm space-y-4">
-            <h3 className="font-black text-sm uppercase text-primary tracking-wider border-b border-border pb-3">💊 Active Medications</h3>
-            <div className="grid grid-cols-2 gap-3 text-xs font-semibold">
-              {[
-                ['anticoagulants', 'Blood Thinners / Anticoagulant'],
-                ['bisphosphonates', 'Bisphosphonates (Bone)'],
-                ['aspirin', 'Daily Aspirin Therapy'],
-                ['immunosuppressants', 'Immunosuppressive Drugs'],
-              ].map(([key, label]) => (
-                <label key={key} className="flex items-center gap-2.5 p-2 bg-muted/40 border border-border/40 rounded-xl hover:bg-muted/70 transition-colors cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={meds[key]}
-                    onChange={e => setMeds(prev => ({ ...prev, [key]: e.target.checked }))}
-                    className="rounded text-primary focus:ring-primary/40 h-4 w-4 cursor-pointer"
-                  />
-                  <span>{label}</span>
-                </label>
+          {conditions.other && (
+            <div className="space-y-1">
+              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">Other Conditions / Notes</span>
+              <div className="text-xs font-semibold px-3 py-2 rounded-xl border bg-amber-500/5 border-amber-500/20 text-foreground">
+                {conditions.other}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Medications & Contacts */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+
+        {/* Active Medications */}
+        <div className="bg-card border border-border p-5 rounded-2xl shadow-sm space-y-4">
+          <h3 className="font-black text-sm uppercase text-primary tracking-wider border-b border-border pb-3">💊 Active Medications</h3>
+
+          {activeMeds.length > 0 ? (
+            <div className="flex flex-wrap gap-2">
+              {activeMeds.map(([key, label]) => (
+                <span key={key} className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 text-[11px] font-bold rounded-xl">
+                  <AlertCircle className="h-3 w-3" /> {label}
+                </span>
               ))}
             </div>
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">Other Drugs / Prescriptions Taken</label>
-              <input
-                type="text"
-                value={meds.others}
-                onChange={e => setMeds(prev => ({ ...prev, others: e.target.value }))}
-                placeholder="e.g. Lipitor 20mg daily, Metformin 500mg..."
-                className="w-full text-xs font-semibold bg-muted border border-border rounded-xl p-2.5 focus:outline-none text-foreground"
-              />
+          ) : (
+            <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 text-xs font-bold">
+              <Check className="h-4 w-4" /> No high-risk medications flagged
             </div>
-          </div>
+          )}
 
-          <div className="bg-card border border-border p-5 rounded-2xl shadow-sm space-y-4">
-            <h3 className="font-black text-sm uppercase text-primary tracking-wider border-b border-border pb-3">📞 Medical Contacts</h3>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">Primary Care Physician</label>
-                <input
-                  type="text"
-                  value={physicianName}
-                  onChange={e => setPhysicianName(e.target.value)}
-                  placeholder="Physician's Name"
-                  className="w-full text-xs font-semibold bg-muted border border-border rounded-xl p-2.5 focus:outline-none text-foreground"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">Physician Phone</label>
-                <input
-                  type="text"
-                  value={physicianPhone}
-                  onChange={e => setPhysicianPhone(e.target.value)}
-                  placeholder="Physician's Contact"
-                  className="w-full text-xs font-semibold bg-muted border border-border rounded-xl p-2.5 focus:outline-none text-foreground"
-                />
+          {meds.others && (
+            <div className="space-y-1">
+              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">Other Prescriptions</span>
+              <div className="text-xs font-semibold px-3 py-2 rounded-xl border bg-muted/40 border-border text-foreground">
+                {meds.others}
               </div>
             </div>
+          )}
+        </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">Emergency Contact Name</label>
-                <input
-                  type="text"
-                  value={emergencyContact}
-                  onChange={e => setEmergencyContact(e.target.value)}
-                  placeholder="Name / Relationship"
-                  className="w-full text-xs font-semibold bg-muted border border-border rounded-xl p-2.5 focus:outline-none text-foreground"
-                />
+        {/* Medical Contacts & Dental History */}
+        <div className="bg-card border border-border p-5 rounded-2xl shadow-sm space-y-4">
+          <h3 className="font-black text-sm uppercase text-primary tracking-wider border-b border-border pb-3">📞 Medical & Previous Dental Contacts</h3>
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">Primary Care Physician</span>
+                <div className="text-xs font-bold text-foreground px-3 py-2 bg-muted/40 border border-border rounded-xl">
+                  {conditions.physicianName || '—'}
+                </div>
               </div>
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">Emergency Contact Phone</label>
-                <input
-                  type="text"
-                  value={emergencyPhone}
-                  onChange={e => setEmergencyPhone(e.target.value)}
-                  placeholder="Emergency Phone"
-                  className="w-full text-xs font-semibold bg-muted border border-border rounded-xl p-2.5 focus:outline-none text-foreground"
-                />
+              <div className="space-y-1">
+                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">Physician Phone</span>
+                <div className="text-xs font-bold text-foreground px-3 py-2 bg-muted/40 border border-border rounded-xl">
+                  {conditions.physicianPhone || '—'}
+                </div>
               </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">Emergency Contact</span>
+                <div className="text-xs font-bold text-foreground px-3 py-2 bg-muted/40 border border-border rounded-xl">
+                  {conditions.emergencyContact || '—'}
+                </div>
+              </div>
+              <div className="space-y-1">
+                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">Emergency Phone</span>
+                <div className="text-xs font-bold text-foreground px-3 py-2 bg-muted/40 border border-border rounded-xl">
+                  {conditions.emergencyPhone || '—'}
+                </div>
+              </div>
+            </div>
+
+            {/* Previous Dentist Information */}
+            <div className="border-t border-border/60 pt-3 space-y-3">
+              <span className="text-[10px] font-extrabold text-indigo-500 uppercase tracking-wider block">🦷 Previous Dentist Information</span>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">Previous Dentist Name</span>
+                  <div className="text-xs font-bold text-foreground px-3 py-2 bg-muted/40 border border-border rounded-xl">
+                    {conditions.previousDentistName || '—'}
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">Previous Clinic Name</span>
+                  <div className="text-xs font-bold text-foreground px-3 py-2 bg-muted/40 border border-border rounded-xl">
+                    {conditions.previousDentistClinic || '—'}
+                  </div>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">Dentist Phone</span>
+                  <div className="text-xs font-bold text-foreground px-3 py-2 bg-muted/40 border border-border rounded-xl">
+                    {conditions.previousDentistPhone || '—'}
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">Last Dental Visit</span>
+                  <div className="text-xs font-bold text-foreground px-3 py-2 bg-muted/40 border border-border rounded-xl">
+                    {conditions.lastDentalVisit || '—'}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Existing Dental Conditions */}
+            <div className="border-t border-border/60 pt-3 space-y-2">
+              <span className="text-[10px] font-extrabold text-indigo-500 uppercase tracking-wider block">🦷 Existing Dental Conditions</span>
+              {Array.isArray(conditions.existingDentalConditions) && conditions.existingDentalConditions.length > 0 ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {conditions.existingDentalConditions.map((cond, idx) => (
+                    <span key={idx} className="text-[10.5px] font-extrabold px-2.5 py-1 rounded-lg bg-indigo-500/10 text-indigo-600 border border-indigo-500/20 dark:text-indigo-400">
+                      ✓ {cond}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-xs font-semibold text-muted-foreground italic px-3 py-2 bg-muted/40 border border-border rounded-xl">
+                  No pre-existing dental conditions recorded.
+                </div>
+              )}
+              {conditions.existingDentalNotes && (
+                <div className="space-y-1 pt-1">
+                  <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider block">Dental History Notes</span>
+                  <div className="text-xs font-medium text-foreground px-3 py-2 bg-muted/40 border border-border rounded-xl font-mono">
+                    {conditions.existingDentalNotes}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
+      </div>
 
-        {/* Action Button */}
-        <div className="flex justify-end gap-3 border-t border-border pt-4">
-          <Button
-            type="submit"
-            disabled={loading}
-            className="px-6 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs h-11 flex items-center justify-center gap-2"
-          >
-            {loading ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" /> Updating Patient History File...
-              </>
-            ) : (
-              <>Update Medical File</>
-            )}
-          </Button>
-        </div>
-      </form>
     </div>
   );
 }
@@ -2791,30 +3413,79 @@ function PerioChartTab({ patientId }) {
 
   // Parse Perio data or supply default template for all 32 teeth
   const parsePerioData = () => {
+    let parsed = {};
     if (patient.perioChartData) {
       try {
-        const parsed = typeof patient.perioChartData === 'string'
+        parsed = typeof patient.perioChartData === 'string'
           ? JSON.parse(patient.perioChartData)
           : patient.perioChartData;
-        if (parsed && typeof parsed === 'object') return parsed;
       } catch (_) {}
     }
     
     // Fallback: Default structure for teeth 1-32
     const defaultData = {};
     for (let i = 1; i <= 32; i++) {
+      const toothData = parsed && parsed[i] ? parsed[i] : {};
+
+      // Normalize pocketDepth
+      let pocketDepth = { mesial: 2, mid: 2, distal: 2 };
+      if (toothData.pocketDepth !== undefined) {
+        if (typeof toothData.pocketDepth === 'object' && toothData.pocketDepth !== null) {
+          pocketDepth = {
+            mesial: toothData.pocketDepth.mesial !== undefined ? toothData.pocketDepth.mesial : 2,
+            mid: toothData.pocketDepth.mid !== undefined ? toothData.pocketDepth.mid : 2,
+            distal: toothData.pocketDepth.distal !== undefined ? toothData.pocketDepth.distal : 2
+          };
+        } else if (typeof toothData.pocketDepth === 'number') {
+          pocketDepth = { mesial: toothData.pocketDepth, mid: toothData.pocketDepth, distal: toothData.pocketDepth };
+        }
+      }
+
+      // Normalize gingivalMargin
+      let gingivalMargin = { mesial: 0, mid: 0, distal: 0 };
+      if (toothData.gingivalMargin !== undefined) {
+        if (typeof toothData.gingivalMargin === 'object' && toothData.gingivalMargin !== null) {
+          gingivalMargin = {
+            mesial: toothData.gingivalMargin.mesial !== undefined ? toothData.gingivalMargin.mesial : 0,
+            mid: toothData.gingivalMargin.mid !== undefined ? toothData.gingivalMargin.mid : 0,
+            distal: toothData.gingivalMargin.distal !== undefined ? toothData.gingivalMargin.distal : 0
+          };
+        } else if (typeof toothData.gingivalMargin === 'number') {
+          gingivalMargin = { mesial: toothData.gingivalMargin, mid: toothData.gingivalMargin, distal: toothData.gingivalMargin };
+        }
+      }
+
+      // Normalize bleeding
+      let bleeding = { mesial: false, mid: false, distal: false };
+      if (toothData.bleeding !== undefined) {
+        if (typeof toothData.bleeding === 'object' && toothData.bleeding !== null) {
+          bleeding = {
+            mesial: toothData.bleeding.mesial !== undefined ? toothData.bleeding.mesial : false,
+            mid: toothData.bleeding.mid !== undefined ? toothData.bleeding.mid : false,
+            distal: toothData.bleeding.distal !== undefined ? toothData.bleeding.distal : false
+          };
+        } else if (typeof toothData.bleeding === 'boolean') {
+          bleeding = { mesial: toothData.bleeding, mid: toothData.bleeding, distal: toothData.bleeding };
+        }
+      }
+
       defaultData[i] = {
-        pocketDepth: { mesial: 2, mid: 2, distal: 2 },
-        gingivalMargin: { mesial: 0, mid: 0, distal: 0 },
-        bleeding: { mesial: false, mid: false, distal: false },
-        plaque: false,
-        mobility: 0
+        pocketDepth,
+        gingivalMargin,
+        bleeding,
+        plaque: toothData.plaque !== undefined ? !!toothData.plaque : false,
+        mobility: toothData.mobility !== undefined ? Number(toothData.mobility) || 0 : 0,
+        furcation: toothData.furcation !== undefined ? Number(toothData.furcation) || 0 : 0
       };
     }
     return defaultData;
   };
 
   const [perioData, setPerioData] = useState(parsePerioData());
+
+  useEffect(() => {
+    setPerioData(parsePerioData());
+  }, [patient.perioChartData]);
 
   const handlePocketDepthChange = (toothNum, site, val) => {
     const num = Math.min(10, Math.max(1, Number(val) || 1));
@@ -2878,6 +3549,17 @@ function PerioChartTab({ patientId }) {
     }));
   };
 
+  const handleFurcationChange = (toothNum, val) => {
+    const num = Math.min(3, Math.max(0, Number(val) || 0));
+    setPerioData(prev => ({
+      ...prev,
+      [toothNum]: {
+        ...prev[toothNum],
+        furcation: num
+      }
+    }));
+  };
+
   const handleSavePerio = async () => {
     setLoading(true);
     try {
@@ -2900,14 +3582,20 @@ function PerioChartTab({ patientId }) {
   const teethUpper = Array.from({ length: 16 }, (_, i) => i + 1);
   const teethLower = Array.from({ length: 16 }, (_, i) => 32 - i);
 
+  // Multi-root teeth (Molars: 1, 2, 3, 14, 15, 16, 17, 18, 19, 30, 31, 32)
+  const isMolar = (num) => [1, 2, 3, 14, 15, 16, 17, 18, 19, 30, 31, 32].includes(Number(num));
+
   const renderToothRow = (num) => {
     const data = perioData[num] || {
       pocketDepth: { mesial: 2, mid: 2, distal: 2 },
       gingivalMargin: { mesial: 0, mid: 0, distal: 0 },
       bleeding: { mesial: false, mid: false, distal: false },
       plaque: false,
-      mobility: 0
+      mobility: 0,
+      furcation: 0
     };
+
+    const hasFurcation = isMolar(num);
 
     return (
       <div key={num} className="border border-border p-3 rounded-xl bg-card text-xs flex flex-col gap-2 font-semibold hover:border-primary/30 transition-all select-none">
@@ -3010,6 +3698,27 @@ function PerioChartTab({ patientId }) {
             {data.plaque ? 'Yes' : 'No'}
           </button>
         </div>
+
+        {/* Furcation Grade (Multi-root molars only) */}
+        {hasFurcation && (
+          <div className="flex justify-between items-center mt-1 border-t border-border/40 pt-1.5 text-[10px]">
+            <span className="text-muted-foreground font-bold">Furcation:</span>
+            <select
+              value={data.furcation || 0}
+              onChange={e => handleFurcationChange(num, e.target.value)}
+              className={`text-[10px] border rounded font-extrabold p-0.5 cursor-pointer outline-none ${
+                data.furcation > 0
+                  ? 'bg-teal-500/15 text-teal-600 border-teal-500/40 dark:text-teal-400'
+                  : 'bg-muted text-foreground border-border'
+              }`}
+            >
+              <option value="0">Grade 0</option>
+              <option value="1">Grade I</option>
+              <option value="2">Grade II</option>
+              <option value="3">Grade III</option>
+            </select>
+          </div>
+        )}
       </div>
     );
   };
@@ -3023,7 +3732,7 @@ function PerioChartTab({ patientId }) {
               <Table className="h-4.5 w-4.5 text-primary" /> Periodontal Charting Grid
             </h3>
             <p className="text-[10px] text-muted-foreground font-semibold mt-0.5">
-              Measure pocket depths, gingival recession (gingival margin), bleeding on probing (BOP), and tooth mobility for all 32 teeth.
+              Measure pocket depths, gingival recession (gingival margin), bleeding on probing (BOP), tooth mobility, and furcation grades for applicable molars.
             </p>
           </div>
           <Button
@@ -3040,6 +3749,7 @@ function PerioChartTab({ patientId }) {
           <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded bg-rose-500/10 border border-rose-400" /> Deep Pockets (PD &gt;= 4mm)</span>
           <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded bg-rose-600" /> Bleeding on Probing (BOP)</span>
           <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded bg-amber-500" /> Plaque present</span>
+          <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded bg-teal-500" /> Furcation Grade (I–III)</span>
         </div>
 
         {/* Upper Row teeth */}

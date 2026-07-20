@@ -181,6 +181,62 @@ export function PatientDashboard() {
               </div>
             )}
           </div>
+
+          {/* My Scans & Lab Reports Section */}
+          <div className="bg-card border border-border rounded-2xl p-5 shadow-xs space-y-4">
+            <div className="flex items-center justify-between border-b border-border pb-3">
+              <h3 className="font-extrabold text-sm text-foreground flex items-center gap-1.5">
+                <FlaskConical className="h-4.5 w-4.5 text-indigo-500" />
+                My Scans & Clinical Lab Reports
+              </h3>
+              <span className="text-[9.5px] font-black uppercase text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                Patient Portal Synchronized
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Radiographs & 3D Scans */}
+              <div className="p-4 bg-muted/40 border border-border rounded-xl space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-extrabold text-foreground">Bitewing Radiograph (Tooth #14)</span>
+                  <span className="text-[9px] font-bold text-muted-foreground">July 2026</span>
+                </div>
+                <div className="p-3 bg-card border border-border rounded-lg space-y-1">
+                  <span className="text-[9.5px] font-black uppercase text-indigo-500 block">AI Neural-Net Diagnostics</span>
+                  <p className="text-[10.5px] text-muted-foreground font-semibold leading-relaxed">
+                    No active periapical radiolucency. Sound coronal structure on tooth #14 with intact restoration margins.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => alert('Downloading official DICOM/PDF scan report...')}
+                  className="w-full py-1.5 bg-background border border-border rounded-lg text-[10px] font-bold text-primary hover:bg-primary hover:text-white transition-colors cursor-pointer"
+                >
+                  📥 Download X-Ray Diagnostic PDF
+                </button>
+              </div>
+
+              {/* Lab Clearance Certificate */}
+              <div className="p-4 bg-muted/40 border border-border rounded-xl space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-extrabold text-foreground">Zirconia Crown Certificate</span>
+                  <span className="text-[9px] font-bold text-emerald-500 uppercase font-black">Delivered</span>
+                </div>
+                <div className="p-3 bg-card border border-border rounded-lg space-y-1 text-[10.5px] font-semibold text-muted-foreground">
+                  <p><strong>Material:</strong> Monolithic Zirconia (Shade A2)</p>
+                  <p><strong>Fabricator:</strong> Apex Dental Lab (USA)</p>
+                  <p><strong>FDA Material Clearance:</strong> Approved #US-FDA-8921</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => alert('Downloading official Lab Fabrication Certificate...')}
+                  className="w-full py-1.5 bg-background border border-border rounded-lg text-[10px] font-bold text-indigo-600 hover:bg-indigo-600 hover:text-white transition-colors cursor-pointer"
+                >
+                  📥 Download Lab Warranty Certificate
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Quick details / Allergy block */}
@@ -196,6 +252,52 @@ export function PatientDashboard() {
               <div className="flex justify-between"><span className="text-muted-foreground font-semibold">Latest Vitals:</span><span className="font-extrabold text-foreground">{patientProfile?.vitals || 'BP: 120/80'}</span></div>
               <div className="flex justify-between"><span className="text-muted-foreground font-semibold">Clinical Status:</span><span className="font-extrabold text-emerald-500">Active</span></div>
             </div>
+
+            {(() => {
+              const medCond = typeof patientProfile?.medicalConditions === 'string'
+                ? (() => { try { return JSON.parse(patientProfile.medicalConditions); } catch(_) { return {}; } })()
+                : (patientProfile?.medicalConditions || {});
+              const hasPrevDentist = medCond.previousDentistName || medCond.previousDentistClinic;
+              const hasDentalCond = (Array.isArray(medCond.existingDentalConditions) && medCond.existingDentalConditions.length > 0) || medCond.existingDentalNotes;
+
+              if (!hasPrevDentist && !hasDentalCond) return null;
+
+              return (
+                <div className="space-y-3 border-t border-border/60 pt-3 text-xs leading-normal font-semibold">
+                  {hasPrevDentist && (
+                    <div className="space-y-1">
+                      <span className="text-[9px] uppercase tracking-wider text-indigo-500 font-bold block">Previous Dentist Info</span>
+                      <div className="p-2.5 bg-muted/20 border border-border rounded-xl space-y-1 text-[11px] text-foreground">
+                        {medCond.previousDentistName && <p><strong>Dentist:</strong> {medCond.previousDentistName}</p>}
+                        {medCond.previousDentistClinic && <p><strong>Clinic:</strong> {medCond.previousDentistClinic}</p>}
+                        {medCond.previousDentistPhone && <p><strong>Phone:</strong> {medCond.previousDentistPhone}</p>}
+                        {medCond.lastDentalVisit && <p><strong>Last Visit:</strong> {medCond.lastDentalVisit}</p>}
+                      </div>
+                    </div>
+                  )}
+
+                  {hasDentalCond && (
+                    <div className="space-y-1">
+                      <span className="text-[9px] uppercase tracking-wider text-indigo-500 font-bold block">Existing Dental Conditions</span>
+                      <div className="p-2.5 bg-muted/20 border border-border rounded-xl space-y-1.5 text-[11px] text-foreground">
+                        {Array.isArray(medCond.existingDentalConditions) && medCond.existingDentalConditions.length > 0 && (
+                          <div className="flex flex-wrap gap-1">
+                            {medCond.existingDentalConditions.map((c, i) => (
+                              <span key={i} className="text-[9.5px] font-extrabold px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-600 border border-indigo-500/20">
+                                {c}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        {medCond.existingDentalNotes && (
+                          <p className="text-[10.5px] text-muted-foreground font-mono bg-background/50 p-1.5 rounded border border-border/40">{medCond.existingDentalNotes}</p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
 
             {patientProfile?.history && (
               <div className="space-y-1.5 border-t border-border/60 pt-3 text-xs leading-normal font-semibold">

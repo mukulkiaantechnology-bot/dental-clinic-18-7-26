@@ -29,6 +29,11 @@ export function LabCasesPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState('All');
 
+  // Case Comment Modal State
+  const [commentingCase, setCommentingCase] = useState(null);
+  const [newCommentText, setNewCommentText] = useState('');
+  const [commentRole, setCommentRole] = useState('Lab Technician');
+
   // Form State
   const [patientId, setPatientId] = useState('');
   const [dentistName, setDentistName] = useState('Dr. Michael Chen');
@@ -100,11 +105,12 @@ export function LabCasesPage() {
 
   const filteredCases = labCases.filter((c) => {
     const matchesSearch =
-      c.patientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      c.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      c.labName.toLowerCase().includes(searchTerm.toLowerCase());
+      (c.patientName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (c.id || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (c.labName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (c.type || '').toLowerCase().includes(searchTerm.toLowerCase());
     
-    const matchesType = typeFilter === 'All' || c.type === typeFilter;
+    const matchesType = typeFilter === 'All' || (c.type || '').toLowerCase().includes(typeFilter.toLowerCase());
     
     return matchesSearch && matchesType;
   });
@@ -241,6 +247,14 @@ export function LabCasesPage() {
                         >
                           Track Case
                         </Button>
+                        <Button
+                          size="xs"
+                          variant="secondary"
+                          onClick={() => setCommentingCase(c)}
+                          className="font-extrabold text-[10px] h-7 gap-1 cursor-pointer bg-indigo-500/10 text-indigo-500 hover:bg-indigo-500/20"
+                        >
+                          💬 Notes ({Array.isArray(c.comments) ? c.comments.length : 0})
+                        </Button>
                         {c.status !== 'Delivered' && (
                           <Button
                             size="xs"
@@ -317,6 +331,17 @@ export function LabCasesPage() {
                     }}
                   >
                     Track Case
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    className="w-full font-bold text-[10px] h-8 cursor-pointer bg-indigo-500/10 text-indigo-500"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setCommentingCase(c);
+                    }}
+                  >
+                    💬 Notes ({Array.isArray(c.comments) ? c.comments.length : 0})
                   </Button>
                   {c.status !== 'Delivered' && (
                     <Button
@@ -453,6 +478,91 @@ export function LabCasesPage() {
           </div>
         </form>
       </Modal>
+
+      {/* Doctor ↔ Lab Technician Communication Notes Modal */}
+      {commentingCase && (
+        <Modal
+          isOpen={Boolean(commentingCase)}
+          onClose={() => setCommentingCase(null)}
+          title={`Lab Case Communication Thread — #${commentingCase.id}`}
+        >
+          <div className="space-y-4 text-left text-xs font-semibold">
+            <div className="p-3 bg-muted/40 border border-border rounded-xl flex items-center justify-between">
+              <div>
+                <span className="font-extrabold text-foreground block">{commentingCase.patientName}</span>
+                <span className="text-[10px] text-muted-foreground font-bold uppercase">
+                  {commentingCase.type} &bull; {commentingCase.labName}
+                </span>
+              </div>
+              <Badge variant="info" className="font-bold">{commentingCase.status}</Badge>
+            </div>
+
+            {commentingCase.notes && (
+              <div className="p-3 bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 rounded-xl space-y-0.5">
+                <span className="text-[9px] font-black uppercase tracking-wider block">Clinical Instructions</span>
+                <p className="text-[11px] font-bold leading-relaxed">{commentingCase.notes}</p>
+              </div>
+            )}
+
+            {/* Discussion Thread */}
+            <div className="space-y-2 border-t border-border pt-3">
+              <label className="text-[10px] font-extrabold text-muted-foreground uppercase tracking-wider block">Discussion & Shade Notes Thread</label>
+              
+              <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
+                {Array.isArray(commentingCase.comments) && commentingCase.comments.length > 0 ? (
+                  commentingCase.comments.map((cm) => (
+                    <div key={cm.id} className="p-2.5 bg-card border border-border rounded-xl space-y-1">
+                      <div className="flex items-center justify-between text-[10px]">
+                        <span className="font-extrabold text-primary">{cm.authorName} <span className="text-muted-foreground font-normal">({cm.authorRole})</span></span>
+                        <span className="text-muted-foreground font-mono text-[9px]">{new Date(cm.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                      </div>
+                      <p className="text-[11px] text-foreground font-medium">{cm.text}</p>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-[10px] text-muted-foreground font-medium italic text-center py-4">No communication notes posted yet for this case.</p>
+                )}
+              </div>
+            </div>
+
+            {/* Post New Note */}
+            <div className="space-y-2 border-t border-border pt-3">
+              <textarea
+                value={newCommentText}
+                onChange={(e) => setNewCommentText(e.target.value)}
+                placeholder="Type doctor or lab technician case note / shade query..."
+                rows={2}
+                className="w-full p-2.5 bg-background border border-border rounded-xl text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+              <div className="flex justify-between items-center">
+                <select
+                  value={commentRole}
+                  onChange={(e) => setCommentRole(e.target.value)}
+                  className="p-1.5 border border-border bg-background rounded-lg text-[10px] font-bold cursor-pointer"
+                >
+                  <option value="Lab Technician">Lab Technician</option>
+                  <option value="Dr. Arthur Vance, DDS">Dr. Arthur Vance (Dentist)</option>
+                </select>
+
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    if (!newCommentText.trim()) return;
+                    useLabStore.getState().addCaseComment(commentingCase.id, newCommentText.trim(), commentRole, commentRole.includes('Doctor') || commentRole.includes('DDS') ? 'Dentist' : 'Lab Tech');
+                    setNewCommentText('');
+                    const updated = useLabStore.getState().labCases.find(c => c.id === commentingCase.id);
+                    if (updated) setCommentingCase(updated);
+                    toast.success('Communication note posted to lab case file.');
+                  }}
+                  className="font-bold text-xs h-8 cursor-pointer"
+                >
+                  Post Note
+                </Button>
+              </div>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

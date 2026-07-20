@@ -100,6 +100,9 @@ export const useDentistStore = create((set, get) => ({
         }
 
          set((state) => ({
+          patients: state.patients.map((p) =>
+            p.id === patientId ? { ...p, ...patient } : p
+          ),
           odontograms: { ...state.odontograms, [patientId]: chart },
           treatmentPlans: { ...state.treatmentPlans, [patientId]: patient.treatmentPlans || [] },
           xrays: { ...state.xrays, [patientId]: patient.xrayFiles || [] },

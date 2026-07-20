@@ -89,13 +89,15 @@ export function LabCoordinatorLayout({ children }) {
             {/* User Details */}
             <div className="flex items-center gap-2 text-left hidden sm:flex">
               <img
-                src={user.avatarUrl || 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150'}
+                src={user.avatarUrl || 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?w=150'}
                 alt={user.name}
                 className="h-8 w-8 rounded-full object-cover border border-border"
               />
               <div className="leading-tight">
                 <h4 className="text-xs font-bold text-foreground">{user.name}</h4>
-                <p className="text-[9px] text-muted-foreground uppercase tracking-wider font-extrabold">Lab Coordinator</p>
+                <p className="text-[9px] text-muted-foreground uppercase tracking-wider font-extrabold">
+                  {user.role ? user.role.replace('_', ' ') : 'Lab Coordinator'} Console
+                </p>
               </div>
             </div>
 

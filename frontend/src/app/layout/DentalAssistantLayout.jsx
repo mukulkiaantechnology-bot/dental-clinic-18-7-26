@@ -100,7 +100,9 @@ export function DentalAssistantLayout({ children }) {
               />
               <div className="leading-tight">
                 <h4 className="text-xs font-bold text-foreground">{user.name}</h4>
-                <p className="text-[9px] text-muted-foreground uppercase tracking-wider font-extrabold">Dental Assistant</p>
+                <p className="text-[9px] text-muted-foreground uppercase tracking-wider font-extrabold">
+                  {user.role ? user.role.replace('_', ' ') : 'Assistant'} Console
+                </p>
               </div>
             </div>
 

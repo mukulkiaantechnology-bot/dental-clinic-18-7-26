@@ -601,9 +601,39 @@ function PerioChartingTab({ patient }) {
   const lowerTeeth = Array.from({ length: 16 }, (_, i) => 32 - i);
 
   const renderToothCell = (toothNum) => {
-    const data = patientChart[toothNum] || { pocketDepth: 3, bleeding: false, mobility: 0 };
+    const rawData = patientChart[toothNum] || { pocketDepth: 3, bleeding: false, mobility: 0 };
     const isSelected = selectedTooth === toothNum;
-    const hasIssues = data.pocketDepth >= 5 || data.bleeding;
+
+    // Normalize pocketDepth to a single number
+    let pocketDepth = 3;
+    if (rawData.pocketDepth !== undefined) {
+      if (Array.isArray(rawData.pocketDepth)) {
+        pocketDepth = Math.max(...rawData.pocketDepth.map(Number));
+      } else if (typeof rawData.pocketDepth === 'object' && rawData.pocketDepth !== null) {
+        pocketDepth = Math.max(
+          Number(rawData.pocketDepth.mesial || 0),
+          Number(rawData.pocketDepth.mid || 0),
+          Number(rawData.pocketDepth.distal || 0)
+        );
+      } else {
+        pocketDepth = Number(rawData.pocketDepth);
+      }
+    }
+
+    // Normalize bleeding to a boolean
+    let bleeding = false;
+    if (rawData.bleeding !== undefined) {
+      bleeding = !!rawData.bleeding;
+    } else if (rawData.bop !== undefined) {
+      if (Array.isArray(rawData.bop)) {
+        bleeding = rawData.bop.some(Boolean);
+      } else if (typeof rawData.bop === 'object' && rawData.bop !== null) {
+        bleeding = !!(rawData.bop.mesial || rawData.bop.mid || rawData.bop.distal);
+      }
+    }
+
+    const mobility = Number(rawData.mobility || 0);
+    const hasIssues = pocketDepth >= 5 || bleeding;
 
     return (
       <button
@@ -619,18 +649,54 @@ function PerioChartingTab({ patient }) {
       >
         <span className="font-extrabold text-[10px] text-muted-foreground uppercase">#{toothNum}</span>
         <div className="flex flex-col items-center gap-0.5 my-1">
-          <span className={`text-sm font-black ${data.pocketDepth >= 5 ? 'text-rose-500' : 'text-foreground'}`}>
-            {data.pocketDepth}mm
+          <span className={`text-sm font-black ${pocketDepth >= 5 ? 'text-rose-500' : 'text-foreground'}`}>
+            {pocketDepth}mm
           </span>
-          {data.bleeding && (
+          {bleeding && (
             <span className="h-1.5 w-1.5 bg-rose-600 rounded-full animate-pulse" title="Bleeding on probing" />
           )}
         </div>
         <span className="text-[9px] font-bold text-muted-foreground">
-          {data.mobility > 0 ? `Mob: ${data.mobility}` : 'Mob: 0'}
+          {mobility > 0 ? `Mob: ${mobility}` : 'Mob: 0'}
         </span>
       </button>
     );
+  };
+
+  // Normalize selected tooth's initial data before passing to editor
+  const selectedRawData = patientChart[selectedTooth] || { pocketDepth: 3, bleeding: false, mobility: 0 };
+  let selectedPocketDepth = 3;
+  if (selectedRawData.pocketDepth !== undefined) {
+    if (Array.isArray(selectedRawData.pocketDepth)) {
+      selectedPocketDepth = Math.max(...selectedRawData.pocketDepth.map(Number));
+    } else if (typeof selectedRawData.pocketDepth === 'object' && selectedRawData.pocketDepth !== null) {
+      selectedPocketDepth = Math.max(
+        Number(selectedRawData.pocketDepth.mesial || 0),
+        Number(selectedRawData.pocketDepth.mid || 0),
+        Number(selectedRawData.pocketDepth.distal || 0)
+      );
+    } else {
+      selectedPocketDepth = Number(selectedRawData.pocketDepth);
+    }
+  }
+
+  let selectedBleeding = false;
+  if (selectedRawData.bleeding !== undefined) {
+    selectedBleeding = !!selectedRawData.bleeding;
+  } else if (selectedRawData.bop !== undefined) {
+    if (Array.isArray(selectedRawData.bop)) {
+      selectedBleeding = selectedRawData.bop.some(Boolean);
+    } else if (typeof selectedRawData.bop === 'object' && selectedRawData.bop !== null) {
+      selectedBleeding = !!(selectedRawData.bop.mesial || selectedRawData.bop.mid || selectedRawData.bop.distal);
+    }
+  }
+
+  const selectedMobility = Number(selectedRawData.mobility || 0);
+
+  const normalizedInitialData = {
+    pocketDepth: selectedPocketDepth,
+    bleeding: selectedBleeding,
+    mobility: selectedMobility
   };
 
   return (
@@ -672,7 +738,7 @@ function PerioChartingTab({ patient }) {
         key={`${patient.id}-${selectedTooth}`}
         patientId={patient.id}
         toothNum={selectedTooth}
-        initialData={patientChart[selectedTooth] || { pocketDepth: 3, bleeding: false, mobility: 0 }}
+        initialData={normalizedInitialData}
         onSave={updateToothPerio}
         onSaveSuccess={() => {
           if (selectedTooth < 32) {
