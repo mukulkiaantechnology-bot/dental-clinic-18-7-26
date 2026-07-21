@@ -57,4 +57,10 @@ router.post(
   controller.addComment
 );
 
+router.delete(
+  '/:id/comments/:commentId',
+  authorize('super_admin', 'clinic_owner', 'dentist', 'lab_coordinator', 'dental_assistant'),
+  controller.deleteComment
+);
+
 module.exports = router;

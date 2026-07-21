@@ -146,20 +146,39 @@ export function PatientTimeline({ patientId }) {
       });
     });
 
-    // 7. Lab Cases
+    // 7. Lab Cases & Uploaded Reports
     const patLabs = labCases.filter(lc => lc.patientId === patientId);
     patLabs.forEach(lc => {
       events.push({
         id: `lc-${lc.id}`,
         type: 'lab_case',
-        date: new Date(lc.createdAt),
-        displayDate: new Date(lc.createdAt).toLocaleDateString(),
+        date: new Date(lc.createdAt || Date.now()),
+        displayDate: new Date(lc.createdAt || Date.now()).toLocaleDateString(),
         title: `Lab Order: ${lc.appliance || lc.type}`,
         icon: Truck,
         color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/20',
         content: `Laboratory: ${lc.labName} | Est. Delivery: ${lc.expectedDelivery || lc.dueDate}`,
         badge: lc.status,
         badgeVariant: lc.status === 'Delivered' || lc.status === 'Received' ? 'success' : 'warning'
+      });
+
+      // Include timeline entries for each uploaded report or communication note
+      const comments = Array.isArray(lc.comments) ? lc.comments : (typeof lc.comments === 'string' ? JSON.parse(lc.comments) : []);
+      comments.forEach((cm, idx) => {
+        const hasAttachment = cm.attachment || (cm.text && (cm.text.includes('.pdf') || cm.text.includes('.png') || cm.text.includes('Attached')));
+        events.push({
+          id: `lc-comment-${lc.id}-${idx}`,
+          type: hasAttachment ? 'lab_report' : 'lab_note',
+          date: new Date(cm.createdAt || Date.now()),
+          displayDate: new Date(cm.createdAt || Date.now()).toLocaleDateString(),
+          title: hasAttachment ? `📄 Lab Report Uploaded (${lc.type})` : `💬 Lab Communication Note (${lc.type})`,
+          icon: hasAttachment ? FileText : Activity,
+          color: hasAttachment ? 'text-emerald-500 bg-emerald-500/10 border-emerald-500/20' : 'text-indigo-500 bg-indigo-500/10 border-indigo-500/20',
+          content: `${cm.authorName} (${cm.authorRole}): ${cm.text}`,
+          attachment: cm.attachment || (hasAttachment ? { fileName: 'Lab_Report.pdf', fileType: 'PDF Document' } : null),
+          badge: hasAttachment ? 'Report Ready' : 'Lab Note',
+          badgeVariant: hasAttachment ? 'success' : 'secondary'
+        });
       });
     });
 

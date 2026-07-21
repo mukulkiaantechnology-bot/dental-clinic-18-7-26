@@ -87,15 +87,31 @@ const addComment = async (req, res, next) => {
   try {
     const { id } = req.params;
     const clinicId = req.clinicId || req.user?.clinicId || 'clinic-1';
-    const { text, authorName, authorRole } = req.body;
+    const { text, authorName, authorRole, attachment } = req.body;
     const labCase = await labCaseService.addLabCaseComment({
       id,
       clinicId,
       text,
       authorName,
-      authorRole
+      authorRole,
+      attachment
     });
     return success(res, labCase, 'Comment added successfully');
+  } catch (err) {
+    next(err);
+  }
+};
+
+const deleteComment = async (req, res, next) => {
+  try {
+    const { id, commentId } = req.params;
+    const clinicId = req.clinicId || req.user?.clinicId || 'clinic-1';
+    const labCase = await labCaseService.deleteLabCaseComment({
+      id,
+      clinicId,
+      commentId
+    });
+    return success(res, labCase, 'Comment deleted successfully');
   } catch (err) {
     next(err);
   }
@@ -109,5 +125,6 @@ module.exports = {
   assignLab,
   updateImplant,
   updateCrown,
-  addComment
+  addComment,
+  deleteComment
 };

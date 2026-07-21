@@ -235,12 +235,13 @@ export const useLabStore = create((set, get) => ({
     }
   },
 
-  addCaseComment: async (caseId, text, authorName, authorRole) => {
+  addCaseComment: async (caseId, text, authorName, authorRole, attachment = null) => {
     const commentObj = {
       id: `comment-${Date.now()}`,
-      text,
+      text: text || '',
       authorName,
       authorRole,
+      attachment,
       createdAt: new Date().toISOString()
     };
     set((state) => ({
@@ -254,7 +255,7 @@ export const useLabStore = create((set, get) => ({
     }));
 
     try {
-      const { data } = await api.post(`/lab-cases/${caseId}/comments`, { text, authorName, authorRole });
+      const { data } = await api.post(`/lab-cases/${caseId}/comments`, { text, authorName, authorRole, attachment });
       if (data && data.success && data.data) {
         const updatedCase = data.data;
         let comments = Array.isArray(updatedCase.comments)
@@ -266,6 +267,33 @@ export const useLabStore = create((set, get) => ({
       }
     } catch (err) {
       console.error('Failed to post case comment to API', err);
+    }
+  },
+
+  deleteCaseComment: async (caseId, commentId) => {
+    set((state) => ({
+      labCases: state.labCases.map(c => {
+        if (c.id === caseId) {
+          const comments = (c.comments || []).filter(cm => String(cm.id) !== String(commentId));
+          return { ...c, comments };
+        }
+        return c;
+      })
+    }));
+
+    try {
+      const { data } = await api.delete(`/lab-cases/${caseId}/comments/${commentId}`);
+      if (data && data.success && data.data) {
+        const updatedCase = data.data;
+        let comments = Array.isArray(updatedCase.comments)
+          ? updatedCase.comments
+          : (typeof updatedCase.comments === 'string' ? JSON.parse(updatedCase.comments) : []);
+        set((state) => ({
+          labCases: state.labCases.map(c => c.id === caseId ? { ...c, ...updatedCase, comments } : c)
+        }));
+      }
+    } catch (err) {
+      console.error('Failed to delete case comment from API', err);
     }
   }
 }));

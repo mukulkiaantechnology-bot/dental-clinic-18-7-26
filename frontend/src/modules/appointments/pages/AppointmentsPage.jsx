@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Calendar as CalendarIcon, Sparkles,
-  AlertTriangle, Edit2, Trash2, Loader2, RefreshCw, ChevronRight, ChevronLeft, Search, User, RotateCcw, Clock, Bell
+  AlertTriangle, Edit2, Trash2, Loader2, RefreshCw, ChevronRight, ChevronLeft, Search, User, RotateCcw, Clock, Bell, Ban
 } from 'lucide-react';
 import { useAppointmentStore } from '../../../store/appointmentStore';
 import { useAuthStore } from '../../../store/authStore';
@@ -49,12 +49,22 @@ const WORKFLOW_STAGE_LABELS = {
   CANCELLED:         'Cancelled',
 };
 
+function formatLocalDate(d = new Date()) {
+  if (!d) return '';
+  if (typeof d === 'string') return d.split('T')[0];
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 export function AppointmentsPage() {
   const navigate = useNavigate();
   const user = useAuthStore((state) => state.user);
   const role = user?.role;
   const isHygienist = role === 'hygienist';
-  const canBook = ['super_admin', 'clinic_owner', 'dentist', 'dental_assistant', 'front_desk', 'frontdesk'].includes(role);
+  const canManageBooking = ['super_admin', 'clinic_owner', 'front_desk', 'frontdesk'].includes(role);
+  const canBook = canManageBooking;
 
   const handleOpenWorkspace = (patientId, appointmentId) => {
     const qStr = appointmentId ? `&appointmentId=${appointmentId}` : '';
@@ -84,7 +94,7 @@ export function AppointmentsPage() {
 
   const [isBookModalOpen, setIsBookModalOpen] = useState(false);
   const [editingApt, setEditingApt] = useState(null);
-  const [selectedDateString, setSelectedDateString] = useState(new Date().toISOString().split('T')[0]);
+  const [selectedDateString, setSelectedDateString] = useState(formatLocalDate());
   const [savingId, setSavingId] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
@@ -197,7 +207,8 @@ export function AppointmentsPage() {
   // Filtered Appointments
   const filteredAppointments = useMemo(() => {
     return appointments.filter((appt) => {
-      if (appt.date !== selectedDateString) return false;
+      const apptDate = formatLocalDate(appt.date);
+      if (apptDate !== selectedDateString) return false;
 
       const term = searchTerm.toLowerCase().trim();
       if (term) {
@@ -213,8 +224,8 @@ export function AppointmentsPage() {
         if (appt.workflowStage !== statusFilter) return false;
       }
 
-      if (dentistFilter !== 'ALL') {
-        const docId = appt.assignedDoctorId || appt.dentistId;
+      if (dentistFilter !== 'ALL' && !dentistFilter.startsWith('ROLE_')) {
+        const docId = appt.assignedDoctorId || appt.dentistId || appt.assignedHygienistId || appt.assignedAssistantId;
         if (docId !== dentistFilter) return false;
       }
 
@@ -224,18 +235,17 @@ export function AppointmentsPage() {
 
   // Form Booking Trigger
   const handleOpenBooking = () => {
+    setEditingApt(null);
     setFormPatientName('');
     setFormPatientId('');
     setFormDentistId('');
     setFormDentistName('');
-    setFormTime('09:00');
+    setFormAssistantId('');
+    setFormHygienistId('');
+    setFormTime('08:00 AM');
     setFormDate(selectedDateString);
     setFormTreatment('');
     setFormNotes('');
-    setFormAssignedTo('dentist');
-    setFormAssistantId('');
-    setFormHygienistId('');
-    setEditingApt(null);
     setIsBookModalOpen(true);
   };
 
@@ -255,15 +265,27 @@ export function AppointmentsPage() {
     setIsBookModalOpen(true);
   };
 
-  const handleDelete = async (id, patientName) => {
-    if (!window.confirm(`Cancel appointment for ${patientName}?`)) return;
+  const handleCancelAppointment = async (apt) => {
+    if (!window.confirm(`Mark appointment for ${apt.patientName} as CANCELLED? (Patient No-Show)`)) return;
+    setSavingId(apt.id);
+    const result = await updateStatus(apt.id, 'CANCELLED');
+    setSavingId(null);
+    if (result.success) {
+      toast.info(`Appointment for ${apt.patientName} marked as CANCELLED.`);
+    } else {
+      toast.error(result.error || 'Failed to cancel appointment');
+    }
+  };
+
+  const handlePermanentDelete = async (id, patientName) => {
+    if (!window.confirm(`Permanently DELETE appointment for ${patientName}? (This will remove the mistake entry completely from system)`)) return;
     setSavingId(id);
     const result = await deleteAppointment(id);
     setSavingId(null);
     if (result.success) {
-      toast.success(`Appointment for ${patientName} cancelled.`);
+      toast.success(`Appointment entry for ${patientName} permanently deleted.`);
     } else {
-      toast.error(result.error || 'Failed to cancel appointment');
+      toast.error(result.error || 'Failed to delete appointment');
     }
   };
 
@@ -427,12 +449,59 @@ export function AppointmentsPage() {
     setEditingApt(null);
   };
 
+  const getAlreadyBookedTimeSlots = useCallback((targetDate, targetDoctorId, excludeAptId) => {
+    if (!targetDate) return [];
+    const formattedTargetDate = formatLocalDate(targetDate);
+
+    return appointments
+      .filter((a) => {
+        if (excludeAptId && a.id === excludeAptId) return false;
+        const aDate = formatLocalDate(a.date);
+        if (aDate !== formattedTargetDate) return false;
+        if (a.workflowStage === 'CANCELLED' || a.status === 'Cancelled') return false;
+        if (targetDoctorId) {
+          const docId = a.assignedDoctorId || a.dentistId;
+          if (docId && docId !== targetDoctorId) return false;
+        }
+        return true;
+      })
+      .map((a) => {
+        const t = parseApptTime(a.time);
+        if (!t) return String(a.time).trim();
+        const suffix = t.hour >= 12 ? 'PM' : 'AM';
+        const displayHr = t.hour > 12 ? t.hour - 12 : t.hour === 0 ? 12 : t.hour;
+        const minStr = t.minute >= 30 ? '30' : '00';
+        return `${displayHr.toString().padStart(2, '0')}:${minStr} ${suffix}`;
+      });
+  }, [appointments]);
+
   const handleSubmitBooking = async (e) => {
     e.preventDefault();
     if (!formPatientId) {
       toast.error('Please select a patient from the dropdown.', 'Patient Required');
       return;
     }
+
+    // Double booking validation
+    const bookedSlots = getAlreadyBookedTimeSlots(formDate, formDentistId, editingApt?.id);
+    const stdFormTime = (() => {
+      if (formTime && !formTime.includes('AM') && !formTime.includes('PM') && formTime.includes(':')) {
+        const [h, m] = formTime.split(':');
+        const hr = parseInt(h, 10);
+        if (!isNaN(hr)) {
+          const suffix = hr >= 12 ? 'PM' : 'AM';
+          const displayHr = hr > 12 ? hr - 12 : hr === 0 ? 12 : hr;
+          return `${displayHr.toString().padStart(2, '0')}:${m} ${suffix}`;
+        }
+      }
+      return formTime;
+    })();
+
+    if (bookedSlots.includes(stdFormTime)) {
+      toast.error(`Time slot ${stdFormTime} is already booked for this doctor on ${formDate}. Please select an available 30-minute slot.`, 'Slot Already Booked 🚫');
+      return;
+    }
+
     const apptData = {
       patientId: formPatientId,
       patientName: formPatientName,
@@ -441,7 +510,7 @@ export function AppointmentsPage() {
       assignedDoctorId: formDentistId || undefined,
       date: formDate,
       time: formTime,
-      duration: 45,
+      duration: 30,
       type: formTreatment,
       notes: formNotes,
       assignedTo: formAssignedTo || 'dentist',
@@ -485,6 +554,13 @@ export function AppointmentsPage() {
       toast.error('Please select a valid date.');
       return;
     }
+
+    const reBookedSlots = getAlreadyBookedTimeSlots(reAptDate, reAptDentistId);
+    if (reBookedSlots.includes(reAptTime)) {
+      toast.error(`Time slot ${reAptTime} is already booked for this doctor on ${reAptDate}. Please select an available slot.`, 'Slot Already Booked 🚫');
+      return;
+    }
+
     setReAptLoading(true);
     const dentist = dentistList.find(d => d.id === reAptDentistId);
     const result = await addAppointment({
@@ -495,7 +571,7 @@ export function AppointmentsPage() {
       assignedDoctorId: reAptDentistId,
       date: reAptDate,
       time: reAptTime,
-      duration: 45,
+      duration: 30,
       type: reAptTreatment,
       notes: reAptNotes,
       status: 'Scheduled',
@@ -513,15 +589,15 @@ export function AppointmentsPage() {
   const generateTimeOptions = () => {
     const options = [];
     for (let hour = 8; hour <= 11; hour++) {
-      for (let min of ['00', '15', '30', '45']) {
+      for (let min of ['00', '30']) {
         options.push(`${hour.toString().padStart(2, '0')}:${min} AM`);
       }
     }
-    for (let min of ['00', '15', '30', '45']) {
+    for (let min of ['00', '30']) {
       options.push(`12:${min} PM`);
     }
     for (let hour = 1; hour <= 7; hour++) {
-      for (let min of ['00', '15', '30', '45']) {
+      for (let min of ['00', '30']) {
         options.push(`${hour.toString().padStart(2, '0')}:${min} PM`);
       }
     }
@@ -597,33 +673,89 @@ export function AppointmentsPage() {
           </button>
         </div>
 
-        {/* Doctor Filters / Tabs */}
-        <div className="hidden lg:flex items-center gap-1 bg-muted/20 border border-border/40 p-1 rounded-xl">
-          <button
-            onClick={() => setDentistFilter('ALL')}
-            className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
-              dentistFilter === 'ALL'
-                ? 'bg-primary text-white shadow-sm font-extrabold'
-                : 'text-muted-foreground hover:text-foreground hover:bg-muted'
-            }`}
-          >
-            All Providers
-          </button>
-          {dentistList.map((doc) => (
+        {/* Doctor & Staff Filters / Tabs */}
+        {['clinic_owner', 'super_admin', 'front_desk', 'frontdesk'].includes(role) ? (
+          <div className="hidden lg:flex items-center gap-1.5 bg-muted/20 border border-border/40 p-1 rounded-xl">
             <button
-              key={doc.id}
-              onClick={() => setDentistFilter(doc.id)}
-              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer truncate max-w-[120px] ${
-                dentistFilter === doc.id
+              onClick={() => setDentistFilter('ALL')}
+              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                dentistFilter === 'ALL'
                   ? 'bg-primary text-white shadow-sm font-extrabold'
                   : 'text-muted-foreground hover:text-foreground hover:bg-muted'
               }`}
-              title={doc.name}
             >
-              {doc.name.replace('Dr. ', 'Dr. ')}
+              All Providers
             </button>
-          ))}
-        </div>
+
+            <button
+              onClick={() => setDentistFilter('ROLE_DENTIST')}
+              className={`px-2.5 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center gap-1 ${
+                dentistFilter === 'ROLE_DENTIST'
+                  ? 'bg-primary text-white shadow-sm font-extrabold'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+              }`}
+            >
+              <span>🩺</span> Dentists
+            </button>
+
+            <button
+              onClick={() => setDentistFilter('ROLE_HYGIENIST')}
+              className={`px-2.5 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center gap-1 ${
+                dentistFilter === 'ROLE_HYGIENIST'
+                  ? 'bg-primary text-white shadow-sm font-extrabold'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+              }`}
+            >
+              <span>🪥</span> Hygienists
+            </button>
+
+            <button
+              onClick={() => setDentistFilter('ROLE_ASSISTANT')}
+              className={`px-2.5 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center gap-1 ${
+                dentistFilter === 'ROLE_ASSISTANT'
+                  ? 'bg-primary text-white shadow-sm font-extrabold'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+              }`}
+            >
+              <span>🤝</span> Assistants
+            </button>
+
+            {/* Individual Staff Dropdown */}
+            <select
+              value={dentistFilter}
+              onChange={(e) => setDentistFilter(e.target.value)}
+              className="px-2 py-1.5 text-xs font-bold rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 cursor-pointer ml-1 max-w-[140px] truncate"
+            >
+              <option value="ALL">Specific Staff...</option>
+              {dentistList.length > 0 && (
+                <optgroup label="Dentists">
+                  {dentistList.map((d) => (
+                    <option key={d.id} value={d.id}>🩺 {d.name}</option>
+                  ))}
+                </optgroup>
+              )}
+              {hygienistList.length > 0 && (
+                <optgroup label="Hygienists">
+                  {hygienistList.map((h) => (
+                    <option key={h.id} value={h.id}>🪥 {h.name}</option>
+                  ))}
+                </optgroup>
+              )}
+              {assistantList.length > 0 && (
+                <optgroup label="Assistants">
+                  {assistantList.map((a) => (
+                    <option key={a.id} value={a.id}>🤝 {a.name}</option>
+                  ))}
+                </optgroup>
+              )}
+            </select>
+          </div>
+        ) : (
+          <div className="hidden lg:flex items-center gap-1.5 bg-primary/10 border border-primary/20 px-3 py-1.5 rounded-xl text-xs font-black text-primary">
+            <span>👨‍⚕️</span>
+            <span>My Schedule ({user?.name || 'Doctor'})</span>
+          </div>
+        )}
 
         {/* Clinic Location Selector & Actions */}
         <div className="flex items-center gap-3 ml-auto">
@@ -688,6 +820,7 @@ export function AppointmentsPage() {
         {/* Left Side: Calendar Panel */}
         <div className="flex-1 min-w-0 flex flex-col h-full bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
           <MultiProviderCalendar
+            user={user}
             selectedDateString={selectedDateString}
             filteredAppointments={filteredAppointments}
             dentistList={dentistList}
@@ -695,10 +828,12 @@ export function AppointmentsPage() {
             assistantList={assistantList}
             role={role}
             canBook={canBook}
+            canManageBooking={canManageBooking}
             savingId={savingId}
             handleStatusAdvance={handleStatusAdvance}
             handleOpenEdit={handleOpenEdit}
-            handleDelete={handleDelete}
+            handleCancelAppointment={handleCancelAppointment}
+            handlePermanentDelete={handlePermanentDelete}
             handleOpenWorkspace={handleOpenWorkspace}
             handleOpenReApt={handleOpenReApt}
             loading={loading}
@@ -750,38 +885,52 @@ export function AppointmentsPage() {
 
           {/* Today's Summary */}
           <div className="bg-card border border-border rounded-2xl p-4 shadow-sm text-left flex flex-col gap-3">
-            <h4 className="text-xs font-bold text-foreground uppercase tracking-wider">Today's Summary</h4>
+            <div className="flex items-center justify-between border-b border-border/40 pb-2">
+              <h4 className="text-xs font-black text-foreground uppercase tracking-wider">Today's Summary</h4>
+              <span className="text-[10px] font-extrabold text-primary bg-primary/10 px-2 py-0.5 rounded-full border border-primary/20">
+                {displayDateStr}
+              </span>
+            </div>
             
             <div className="flex items-center justify-between border-b border-border/45 pb-2">
               <span className="text-[11px] font-bold text-muted-foreground flex items-center gap-1.5">
-                <span className="h-1.5 w-1.5 rounded-full bg-primary" /> Total Apps.
+                <span className="h-2 w-2 rounded-full bg-primary shrink-0" /> Total Appointments
               </span>
-              <span className="text-xs font-extrabold text-foreground">
-                {appointments.filter(a => a.date === selectedDateString).length}
+              <span className="text-xs font-black text-foreground bg-muted px-2 py-0.5 rounded-md border border-border/40">
+                {filteredAppointments.length}
               </span>
             </div>
 
             <div className="flex items-center justify-between border-b border-border/45 pb-2">
               <span className="text-[11px] font-bold text-muted-foreground flex items-center gap-1.5">
-                <span className="h-1.5 w-1.5 rounded-full bg-sky-500" /> New Patients
+                <span className="h-2 w-2 rounded-full bg-emerald-500 shrink-0" /> Active / In-Progress
               </span>
-              <span className="text-xs font-extrabold text-foreground">
-                {appointments.filter(a => a.date === selectedDateString && a.type?.toLowerCase().includes('new patient')).length}
+              <span className="text-xs font-black text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/20">
+                {filteredAppointments.filter(a => ['CHECKED_IN', 'IN_PROGRESS'].includes(a.workflowStage || a.status)).length}
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between border-b border-border/45 pb-2">
+              <span className="text-[11px] font-bold text-muted-foreground flex items-center gap-1.5">
+                <span className="h-2 w-2 rounded-full bg-sky-500 shrink-0" /> New Patients
+              </span>
+              <span className="text-xs font-black text-sky-600 dark:text-sky-400 bg-sky-500/10 px-2 py-0.5 rounded-md border border-sky-500/20">
+                {filteredAppointments.filter(a => (a.type || '').toLowerCase().includes('new patient')).length}
               </span>
             </div>
 
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-bold text-muted-foreground flex items-center gap-1.5">
-                <span className="h-1.5 w-1.5 rounded-full bg-rose-500" /> Cancellations
+                <span className="h-2 w-2 rounded-full bg-rose-500 shrink-0" /> Cancellations
               </span>
-              <span className="text-xs font-extrabold text-foreground">
-                {appointments.filter(a => a.date === selectedDateString && a.workflowStage === 'CANCELLED').length}
+              <span className="text-xs font-black text-rose-600 dark:text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded-md border border-rose-500/20">
+                {filteredAppointments.filter(a => (a.workflowStage || a.status) === 'CANCELLED').length}
               </span>
             </div>
           </div>
 
           {/* Clinic Efficiency & Performance */}
-          <div className="bg-primary text-primary-foreground border border-primary/20 rounded-2xl p-4 shadow-sm text-left flex flex-col gap-3 animate-pulse-subtle">
+          <div className="bg-primary text-primary-foreground border border-primary/20 rounded-2xl p-4 shadow-sm text-left flex flex-col gap-3">
             <h4 className="text-xs font-black uppercase tracking-wider opacity-85">Clinic Efficiency</h4>
             
             <div className="space-y-1">
@@ -798,10 +947,12 @@ export function AppointmentsPage() {
                     'Teeth Cleaning': 150,
                     'Consultation': 100
                   };
-                  const rev = appointments
-                    .filter(a => a.date === selectedDateString && a.workflowStage !== 'CANCELLED')
-                    .reduce((sum, a) => sum + (prices[a.type] || 150), 0);
-                  return rev > 0 ? `$${rev.toLocaleString()}` : '$12,450';
+                  const todayActive = appointments.filter(a => {
+                    const d = formatLocalDate(a.date);
+                    return d === selectedDateString && a.workflowStage !== 'CANCELLED' && a.status !== 'Cancelled';
+                  });
+                  const rev = todayActive.reduce((sum, a) => sum + (prices[a.type] || 150), 0);
+                  return `$${rev.toLocaleString()}`;
                 })()}
               </div>
             </div>
@@ -811,8 +962,13 @@ export function AppointmentsPage() {
                 <span className="opacity-75">Chair Occupancy</span>
                 <span>
                   {(() => {
-                    const todayApts = appointments.filter(a => a.date === selectedDateString && a.workflowStage !== 'CANCELLED').length;
-                    return todayApts > 0 ? `${Math.min(Math.round((todayApts / 12) * 100), 100)}%` : '85%';
+                    const todayActive = appointments.filter(a => {
+                      const d = formatLocalDate(a.date);
+                      return d === selectedDateString && a.workflowStage !== 'CANCELLED' && a.status !== 'Cancelled';
+                    });
+                    const maxCapacity = Math.max((dentistList.length + hygienistList.length || 1) * 16, 16);
+                    const pct = Math.min(Math.round((todayActive.length / maxCapacity) * 100), 100);
+                    return `${pct}%`;
                   })()}
                 </span>
               </div>
@@ -821,8 +977,13 @@ export function AppointmentsPage() {
                   className="bg-primary-foreground h-1.5 rounded-full transition-all duration-300"
                   style={{
                     width: (() => {
-                      const todayApts = appointments.filter(a => a.date === selectedDateString && a.workflowStage !== 'CANCELLED').length;
-                      return todayApts > 0 ? `${Math.min(Math.round((todayApts / 12) * 100), 100)}%` : '85%';
+                      const todayActive = appointments.filter(a => {
+                        const d = formatLocalDate(a.date);
+                        return d === selectedDateString && a.workflowStage !== 'CANCELLED' && a.status !== 'Cancelled';
+                      });
+                      const maxCapacity = Math.max((dentistList.length + hygienistList.length || 1) * 16, 16);
+                      const pct = Math.min(Math.round((todayActive.length / maxCapacity) * 100), 100);
+                      return `${pct}%`;
                     })()
                   }}
                 />
@@ -914,14 +1075,14 @@ export function AppointmentsPage() {
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1">
               <label className="block text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground">
-                ASSISTANT
+                ASSISTANT (OPTIONAL)
               </label>
               <select
                 value={formAssistantId}
                 onChange={(e) => setFormAssistantId(e.target.value)}
                 className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-xs font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all cursor-pointer"
               >
-                <option value="">Select Assistant</option>
+                <option value="">None / Select Assistant</option>
                 {assistantList.map((a) => (
                   <option key={a.id} value={a.id}>
                     {a.name}
@@ -931,14 +1092,14 @@ export function AppointmentsPage() {
             </div>
             <div className="space-y-1">
               <label className="block text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground">
-                HYGIENIST
+                HYGIENIST (OPTIONAL)
               </label>
               <select
                 value={formHygienistId}
                 onChange={(e) => setFormHygienistId(e.target.value)}
                 className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-xs font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all cursor-pointer"
               >
-                <option value="">Select Hygienist</option>
+                <option value="">None / Select Hygienist</option>
                 {hygienistList.map((h) => (
                   <option key={h.id} value={h.id}>
                     {h.name}
@@ -968,14 +1129,26 @@ export function AppointmentsPage() {
                   return formTime;
                 })()}
                 onChange={(e) => setFormTime(e.target.value)}
-                className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-xs font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all cursor-pointer"
+                className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-xs font-bold text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all cursor-pointer"
                 required
               >
-                {generateTimeOptions().map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
+                {(() => {
+                  const bookedSlots = getAlreadyBookedTimeSlots(formDate, formDentistId, editingApt?.id);
+                  return generateTimeOptions().map((t) => {
+                    const isBooked = bookedSlots.includes(t);
+                    return (
+                      <option
+                        key={t}
+                        value={t}
+                        disabled={isBooked}
+                        style={isBooked ? { color: '#dc2626', backgroundColor: '#fef2f2', fontWeight: 'bold' } : {}}
+                        className={isBooked ? 'text-rose-600 bg-rose-50 font-bold dark:bg-rose-950/60 dark:text-rose-400' : ''}
+                      >
+                        {isBooked ? `🚫 ${t} (Already Booked - Reserved)` : `⏰ ${t}`}
+                      </option>
+                    );
+                  });
+                })()}
               </select>
             </div>
           </div>
@@ -1002,11 +1175,45 @@ export function AppointmentsPage() {
             placeholder="Notes or reason for visit..."
           />
 
-          <div className="flex justify-end gap-2 pt-2 border-t border-border">
-            <Button type="button" variant="outline" onClick={handleCloseModal}>Cancel</Button>
-            <Button type="submit" disabled={!formPatientId}>
-              {editingApt ? 'Save Changes' : 'Schedule Visit'}
-            </Button>
+          <div className="flex items-center justify-between pt-3 border-t border-border flex-wrap gap-2">
+            {editingApt ? (
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleCancelAppointment(editingApt);
+                    handleCloseModal();
+                  }}
+                  className="px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400 font-extrabold text-xs hover:bg-amber-600 hover:text-white transition-all cursor-pointer flex items-center gap-1.5"
+                  title="Mark visit as cancelled for patient no-show"
+                >
+                  <Ban className="h-3.5 w-3.5" />
+                  Cancel Visit (No-Show)
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    handlePermanentDelete(editingApt.id, editingApt.patientName);
+                    handleCloseModal();
+                  }}
+                  className="px-3 py-1.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-600 dark:text-rose-400 font-extrabold text-xs hover:bg-rose-600 hover:text-white transition-all cursor-pointer flex items-center gap-1.5"
+                  title="Permanently remove mistake entry from system"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Delete Entry (Mistake)
+                </button>
+              </div>
+            ) : (
+              <div />
+            )}
+
+            <div className="flex items-center gap-2">
+              <Button type="button" variant="outline" onClick={handleCloseModal}>Close</Button>
+              <Button type="submit" disabled={!formPatientId}>
+                {editingApt ? 'Save Changes' : 'Schedule Visit'}
+              </Button>
+            </div>
           </div>
         </form>
       </Modal>
@@ -1066,18 +1273,23 @@ export function AppointmentsPage() {
                 onChange={(e) => setReAptTime(e.target.value)}
                 className="w-full text-xs font-bold bg-muted border border-border rounded-xl p-2.5 focus:outline-none cursor-pointer text-foreground"
               >
-                {[
-                  { value: '09:00 AM', label: '09:00 AM' },
-                  { value: '10:00 AM', label: '10:00 AM' },
-                  { value: '11:00 AM', label: '11:00 AM' },
-                  { value: '12:00 PM', label: '12:00 PM' },
-                  { value: '01:00 PM', label: '01:00 PM' },
-                  { value: '02:00 PM', label: '02:00 PM' },
-                  { value: '03:00 PM', label: '03:00 PM' },
-                  { value: '04:00 PM', label: '04:00 PM' }
-                ].map(t => (
-                  <option key={t.value} value={t.value}>{t.label}</option>
-                ))}
+                {(() => {
+                  const bookedSlots = getAlreadyBookedTimeSlots(reAptDate, reAptDentistId);
+                  return generateTimeOptions().map((t) => {
+                    const isBooked = bookedSlots.includes(t);
+                    return (
+                      <option
+                        key={t}
+                        value={t}
+                        disabled={isBooked}
+                        style={isBooked ? { color: '#dc2626', backgroundColor: '#fef2f2', fontWeight: 'bold' } : {}}
+                        className={isBooked ? 'text-rose-600 bg-rose-50 font-bold dark:bg-rose-950/60 dark:text-rose-400' : ''}
+                      >
+                        {isBooked ? `🚫 ${t} (Already Booked - Reserved)` : `⏰ ${t}`}
+                      </option>
+                    );
+                  });
+                })()}
               </select>
             </div>
           </div>
@@ -1261,8 +1473,11 @@ function getSpecialization(name, role) {
 // ─── MINI CALENDAR COMPONENT ─────────────────────────────────────────────────
 function MiniCalendar({ selectedDateString, onChange }) {
   const [currentMonth, setCurrentMonth] = useState(() => {
-    const d = new Date((selectedDateString || new Date().toISOString().split('T')[0]) + 'T00:00:00');
-    return new Date(d.getFullYear(), d.getMonth(), 1);
+    const parts = (selectedDateString || formatLocalDate()).split('-');
+    if (parts.length === 3) {
+      return new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, 1);
+    }
+    return new Date();
   });
 
   const handlePrevMonth = () => {
@@ -1317,13 +1532,13 @@ function MiniCalendar({ selectedDateString, onChange }) {
         </div>
       </div>
       <div className="grid grid-cols-7 gap-1 text-center">
-        {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map(d => (
-          <span key={d} className="text-[9px] font-black text-muted-foreground/60 uppercase">{d}</span>
+        {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, idx) => (
+          <span key={`${d}-${idx}`} className="text-[9px] font-black text-muted-foreground/60 uppercase">{d}</span>
         ))}
         {daysInMonth.map(({ date, isCurrentMonth }, idx) => {
-          const dateStr = date.toISOString().split('T')[0];
+          const dateStr = formatLocalDate(date);
           const isSelected = dateStr === selectedDateString;
-          const isToday = dateStr === new Date().toISOString().split('T')[0];
+          const isToday = dateStr === formatLocalDate(new Date());
           return (
             <button
               key={idx}
@@ -1345,10 +1560,10 @@ function MiniCalendar({ selectedDateString, onChange }) {
 
 // ─── ENTERPRISE MULTI-PROVIDER CALENDAR ──────────────────────────────────────
 function MultiProviderCalendar({
-  selectedDateString, filteredAppointments,
+  user, selectedDateString, filteredAppointments,
   dentistList, hygienistList, assistantList,
-  role, canBook, savingId,
-  handleStatusAdvance, handleOpenEdit, handleDelete,
+  role, canBook, canManageBooking, savingId,
+  handleStatusAdvance, handleOpenEdit, handleCancelAppointment, handlePermanentDelete,
   handleOpenWorkspace, handleOpenReApt, loading,
   dentistFilter, setDentistFilter, handleOpenBooking,
   setFormPatientName, setFormPatientId, setFormDate, setFormTime,
@@ -1357,18 +1572,33 @@ function MultiProviderCalendar({
   setIsBookModalOpen
 }) {
   const now = new Date();
-  const todayStr = now.toISOString().split('T')[0];
+  const todayStr = formatLocalDate(now);
   const isToday = selectedDateString === todayStr;
   const currentHour = now.getHours();
   const currentMinute = now.getMinutes();
 
   const providers = useMemo(() => {
-    return [
+    const list = [
       ...dentistList.map(d  => ({ id: d.id,  name: d.name,  role: 'Dentist',    initial: (d.name || 'D').replace('Dr. ', '').charAt(0).toUpperCase() })),
       ...hygienistList.map(h => ({ id: h.id,  name: h.name,  role: 'Hygienist',  initial: (h.name || 'H').replace('Dr. ', '').charAt(0).toUpperCase() })),
       ...assistantList.map(a => ({ id: a.id,  name: a.name,  role: 'Assistant',  initial: (a.name || 'A').replace('Dr. ', '').charAt(0).toUpperCase() })),
     ];
-  }, [dentistList, hygienistList, assistantList]);
+
+    if (['dentist', 'hygienist', 'dental_assistant', 'assistant'].includes(role) && user) {
+      const uId = user.id;
+      const uName = (user.name || '').toLowerCase().trim();
+      const myProv = list.filter(p => p.id === uId || (uName && p.name.toLowerCase().trim().includes(uName)));
+      if (myProv.length > 0) return myProv;
+      return [{
+        id: user.id || 'my_id',
+        name: user.name || 'My Schedule',
+        role: role === 'dentist' ? 'Dentist' : role === 'hygienist' ? 'Hygienist' : 'Assistant',
+        initial: (user.name || 'D').replace('Dr. ', '').charAt(0).toUpperCase()
+      }];
+    }
+
+    return list;
+  }, [dentistList, hygienistList, assistantList, role, user]);
 
   const showGeneric = providers.length === 0;
   const columns = useMemo(() => {
@@ -1379,6 +1609,9 @@ function MultiProviderCalendar({
 
   const activeColumns = useMemo(() => {
     if (dentistFilter === 'ALL') return columns;
+    if (dentistFilter === 'ROLE_DENTIST') return columns.filter(c => c.role === 'Dentist');
+    if (dentistFilter === 'ROLE_HYGIENIST') return columns.filter(c => c.role === 'Hygienist');
+    if (dentistFilter === 'ROLE_ASSISTANT') return columns.filter(c => c.role === 'Assistant');
     return columns.filter(c => c.id === dentistFilter);
   }, [columns, dentistFilter]);
 
@@ -1391,7 +1624,9 @@ function MultiProviderCalendar({
       if (slotMinute === 30 && time.minute < 30) return false;
       if (showGeneric) return true;
       const ids = [apt.assignedDoctorId, apt.dentistId, apt.assignedHygienistId, apt.assignedAssistantId];
-      return ids.includes(providerId);
+      if (ids.includes(providerId)) return true;
+      if (user && ['dentist', 'hygienist', 'dental_assistant', 'assistant'].includes(role)) return true;
+      return false;
     });
   }
 
@@ -1403,24 +1638,29 @@ function MultiProviderCalendar({
     setFormTreatment('');
     setFormNotes('');
     
+    // Reset all 3 role selections first
+    setFormDentistId('');
+    setFormDentistName('');
+    setFormAssistantId('');
+    setFormHygienistId('');
+
     if (prov.role === 'Dentist') {
       setFormDentistId(prov.id);
       setFormDentistName(prov.name);
-      const doc = dentistList.find(d => d.id === prov.id);
-      if (doc) {
-        if (doc.assistantId) setFormAssistantId(doc.assistantId);
-        if (doc.hygienistId) setFormHygienistId(doc.hygienistId);
-      }
     } else if (prov.role === 'Hygienist') {
       setFormHygienistId(prov.id);
     } else if (prov.role === 'Assistant') {
       setFormAssistantId(prov.id);
     }
     
-    const formattedHour = String(slot.hour).padStart(2, '0');
+    // Format 12-hour time string (e.g. 08:00 AM, 08:30 AM)
+    const hrNum = parseInt(slot.hour, 10);
+    const suffix = hrNum >= 12 ? 'PM' : 'AM';
+    const displayHr = hrNum > 12 ? hrNum - 12 : hrNum === 0 ? 12 : hrNum;
     const formattedMinute = String(slot.minute).padStart(2, '0');
-    setFormTime(`${formattedHour}:${formattedMinute}`);
+    const timeStr = `${displayHr.toString().padStart(2, '0')}:${formattedMinute} ${suffix}`;
     
+    setFormTime(timeStr);
     setEditingApt(null);
     setIsBookModalOpen(true);
   };
@@ -1428,14 +1668,14 @@ function MultiProviderCalendar({
   return (
     <div className="flex flex-1 min-h-0 overflow-auto relative rounded-2xl bg-card">
       {/* Sticky Left Time column */}
-      <div className="sticky left-0 z-30 flex-shrink-0 w-[76px] border-r border-border bg-card/95 backdrop-blur-sm select-none shadow-[2px_0_4px_-2px_rgba(0,0,0,0.05)]">
+      <div className="sticky left-0 z-30 flex-shrink-0 w-[76px] border-r border-border bg-card select-none shadow-[2px_0_4px_-2px_rgba(0,0,0,0.05)]">
         <div className="h-14 border-b border-border flex items-center justify-center bg-card sticky top-0 z-40">
           <Clock className="h-4 w-4 text-muted-foreground opacity-60" />
         </div>
         {CAL_SLOTS.map(slot => {
           const isCurrentSlot = isToday && currentHour === slot.hour && Math.abs(currentMinute - slot.minute) < 15;
           return (
-            <div key={slot.key} className="min-h-[145px] border-b border-border/40 flex flex-col items-center justify-center bg-card/60 p-2">
+            <div key={slot.key} className="min-h-[175px] border-b border-border/40 flex flex-col items-center justify-center bg-card p-2">
               <span className={`text-xs font-black leading-none ${isCurrentSlot ? 'text-primary' : 'text-muted-foreground/80'}`}>
                 {slot.label.split(' ')[0]}
               </span>
@@ -1448,7 +1688,7 @@ function MultiProviderCalendar({
       </div>
 
       {/* Provider Columns grid */}
-      <div className="flex flex-1 min-h-0 overflow-x-auto">
+      <div className="flex flex-1 min-w-0">
         {activeColumns.map((prov, ci) => (
           <div
             key={prov.id}
@@ -1475,10 +1715,7 @@ function MultiProviderCalendar({
               return (
                 <div
                   key={slot.key}
-                  onClick={() => apts.length === 0 && handleCellClick(prov, slot)}
-                  className={`min-h-[145px] border-b border-border/30 relative p-2.5 transition-colors ${
-                    apts.length === 0 && canBook ? 'cursor-pointer hover:bg-muted/10' : ''
-                  } ${isCurrentSlot ? 'bg-primary/5' : ''}`}
+                  className={`group min-h-[175px] border-b border-border/30 relative p-2 transition-colors ${isCurrentSlot ? 'bg-primary/5' : 'hover:bg-muted/10'}`}
                 >
                   {/* Current Time Horizontal Line */}
                   {isCurrentSlot && (
@@ -1492,7 +1729,7 @@ function MultiProviderCalendar({
                   )}
 
                   {apts.length > 0 ? (
-                    <div className="flex flex-col gap-2.5 max-h-[320px] overflow-y-auto pr-1 select-none">
+                    <div className="flex flex-col gap-2 relative z-10 w-full select-none">
                       {apts.map(apt => {
                         const colors = getTypeColors(apt.type);
                         const stage = apt.workflowStage || 'SCHEDULED';
@@ -1505,7 +1742,7 @@ function MultiProviderCalendar({
                         return (
                           <div
                             key={apt.id}
-                            className={`group rounded-xl border text-left text-xs transition-all hover:shadow-lg cursor-pointer p-3 flex flex-col justify-between shrink-0 min-h-[115px] shadow-xs ${colors.bg} ${colors.border}`}
+                            className={`relative z-10 rounded-xl border text-left text-xs transition-all hover:shadow-lg p-2.5 flex flex-col justify-between shrink-0 min-h-[140px] shadow-xs ${colors.bg} ${colors.border} ${isWS ? 'cursor-pointer' : 'cursor-default'}`}
                             onClick={(e) => {
                               e.stopPropagation();
                               if (isWS) handleOpenWorkspace(apt.patientId, apt.id);
@@ -1525,14 +1762,14 @@ function MultiProviderCalendar({
                             </div>
 
                             {/* Card Body: Patient Name & Notes */}
-                            <div className="py-2 space-y-1">
-                              <p className="text-xs font-black text-foreground group-hover:text-primary transition-colors flex items-center gap-1.5">
+                            <div className="py-1.5 space-y-1">
+                              <p className="text-xs font-black text-foreground flex items-center gap-1.5">
                                 <User className="h-3.5 w-3.5 text-primary shrink-0" />
                                 <span className="truncate">{apt.patientName}</span>
                               </p>
 
                               {apt.notes && (
-                                <p className="text-[10px] text-muted-foreground/90 font-semibold leading-snug bg-background/40 p-1.5 rounded-md border border-border/30">
+                                <p className="text-[10px] text-muted-foreground/90 font-semibold leading-snug bg-background/40 p-1.5 rounded-md border border-border/30 line-clamp-1">
                                   {apt.notes}
                                 </p>
                               )}
@@ -1545,7 +1782,7 @@ function MultiProviderCalendar({
                             </div>
 
                             {/* Card Footer: Workflow Stage & Actions */}
-                            <div className="pt-2 border-t border-border/30 flex items-center justify-between gap-1 flex-wrap">
+                            <div className="pt-1.5 border-t border-border/30 flex items-center justify-between gap-1.5 flex-wrap">
                               <span className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md border ${
                                 stage === 'COMPLETED' ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30' :
                                 stage === 'CHECKED_IN' ? 'bg-amber-500/10 text-amber-600 border-amber-500/30' :
@@ -1555,11 +1792,11 @@ function MultiProviderCalendar({
                                 {WORKFLOW_STAGE_LABELS[stage] || stage}
                               </span>
 
-                              <div className="flex items-center gap-1">
+                              <div className="flex items-center gap-1 flex-shrink-0">
                                 {canAdv && (
                                   <button
                                     type="button"
-                                    onClick={e => { e.stopPropagation(); handleStatusAdvance(apt); }}
+                                    onClick={e => { e.stopPropagation(); e.preventDefault(); handleStatusAdvance(apt); }}
                                     disabled={saving}
                                     className="px-2 py-1 rounded-md bg-primary text-white text-[9.5px] font-black hover:bg-primary/90 transition-all cursor-pointer shadow-2xs flex items-center gap-1 active:scale-95 disabled:opacity-50"
                                     title={`Advance to ${flow.label}`}
@@ -1568,24 +1805,40 @@ function MultiProviderCalendar({
                                   </button>
                                 )}
 
-                                <button
-                                  type="button"
-                                  onClick={e => { e.stopPropagation(); handleOpenEdit(apt); }}
-                                  className="p-1 rounded-md bg-background border border-border text-[9px] font-bold text-foreground hover:bg-muted transition-all cursor-pointer"
-                                  title="Edit Appointment"
-                                >
-                                  <Edit2 className="h-3 w-3" />
-                                </button>
+                                {canManageBooking && (
+                                  <>
+                                    {stage !== 'CANCELLED' && (
+                                      <button
+                                        type="button"
+                                        onClick={e => { e.stopPropagation(); e.preventDefault(); handleCancelAppointment(apt); }}
+                                        disabled={saving}
+                                        className="p-1.5 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-700 text-amber-600 dark:text-amber-400 hover:bg-amber-600 hover:text-white hover:border-amber-600 transition-all cursor-pointer disabled:opacity-50 active:scale-95"
+                                        title="Cancel Visit (Patient No-Show)"
+                                      >
+                                        <Ban className="h-3.5 w-3.5" />
+                                      </button>
+                                    )}
 
-                                <button
-                                  type="button"
-                                  onClick={e => { e.stopPropagation(); handleDelete(apt.id, apt.patientName); }}
-                                  disabled={saving}
-                                  className="p-1 rounded-md bg-background border border-border text-[9px] font-bold text-rose-600 hover:bg-rose-600 hover:text-white transition-all cursor-pointer disabled:opacity-50"
-                                  title="Cancel Appointment"
-                                >
-                                  <Trash2 className="h-3 w-3" />
-                                </button>
+                                    <button
+                                      type="button"
+                                      onClick={e => { e.stopPropagation(); e.preventDefault(); handleOpenEdit(apt); }}
+                                      className="p-1.5 rounded-md bg-background border border-border text-foreground hover:bg-muted transition-all cursor-pointer active:scale-95"
+                                      title="Edit Appointment"
+                                    >
+                                      <Edit2 className="h-3.5 w-3.5" />
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      onClick={e => { e.stopPropagation(); e.preventDefault(); handlePermanentDelete(apt.id, apt.patientName); }}
+                                      disabled={saving}
+                                      className="p-1.5 rounded-md bg-rose-50 dark:bg-rose-950/30 border border-rose-300 dark:border-rose-700 text-rose-600 dark:text-rose-400 hover:bg-rose-600 hover:text-white hover:border-rose-600 transition-all cursor-pointer disabled:opacity-50 active:scale-95"
+                                      title="Permanent Delete (Mistake Entry)"
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    </button>
+                                  </>
+                                )}
                               </div>
                             </div>
                           </div>
@@ -1593,8 +1846,17 @@ function MultiProviderCalendar({
                       })}
                     </div>
                   ) : (
-                    <div className="h-full w-full flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
-                      <span className="text-[9.5px] font-extrabold text-primary uppercase tracking-widest">+ Book Slot</span>
+                    <div className="flex items-center h-full">
+                      {canBook && (
+                        <button
+                          type="button"
+                          onClick={() => handleCellClick(prov, slot)}
+                          className="px-3 py-1.5 rounded-xl bg-primary/10 border border-primary/30 text-primary text-[10px] font-black uppercase tracking-wider hover:bg-primary hover:text-white transition-all cursor-pointer active:scale-95 flex items-center gap-1 shadow-2xs"
+                          title={`Book at ${slot.label} for ${prov.name}`}
+                        >
+                          + Book
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>

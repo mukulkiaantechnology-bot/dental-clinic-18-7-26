@@ -11,10 +11,11 @@ import { Input } from '../../../shared/ui/Input';
 import { Select } from '../../../shared/ui/Select';
 import { useToast } from '../../../shared/hooks/useToast';
 import { AIInsightsPanel } from '../../../shared/ui/AIInsightsPanel';
+import { openReportInNewTab } from '../../dashboard/pages/DentistPages';
 
 export function LabCasesPage() {
   const navigate = useNavigate();
-  const { labCases, activeCaseId, setActiveCaseId, createLabCase, updateCaseStatus, fetchLabCases } = useLabStore();
+  const { labCases, activeCaseId, setActiveCaseId, createLabCase, updateCaseStatus, fetchLabCases, addCaseComment, deleteCaseComment } = useLabStore();
   const { patients, fetchPatients } = useDentistStore();
   const { appointments, fetchAppointments } = useAppointmentStore();
   const toast = useToast();
@@ -93,6 +94,19 @@ export function LabCasesPage() {
     });
 
     if (newId) {
+      if (files.length > 0) {
+        for (const fileObj of files) {
+          if (typeof fileObj === 'object' && fileObj.fileUrl) {
+            await addCaseComment(
+              newId,
+              `Attached Lab Report / Scan: ${fileObj.fileName}`,
+              'Lab Coordinator',
+              'Lab Coordinator',
+              fileObj
+            );
+          }
+        }
+      }
       toast.success(`Lab case ${newId} successfully created for ${resolvedPatientName}!`);
     } else {
       toast.error('Failed to create lab case.');
@@ -444,38 +458,39 @@ export function LabCasesPage() {
           </div>
 
           {/* Add Attachments section */}
-          <div className="space-y-2 border-t border-border/60 pt-3">
+          <div className="space-y-2 border-t border-border/60 pt-3 text-left">
             <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">Digital Scans & Scopes (Attachments)</label>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                placeholder="e.g. intraoral_scan_mesh.obj"
-                value={newFileName}
-                onChange={(e) => setNewFileName(e.target.value)}
-                className="flex-1 px-3 py-1.5 border border-border bg-muted/30 rounded-lg text-xs font-semibold focus:outline-none text-foreground"
-              />
-              <button
-                type="button"
-                onClick={handleAddFile}
-                className="px-3 bg-secondary hover:bg-secondary/80 text-foreground font-bold text-xs border border-border rounded-lg cursor-pointer"
-              >
-                Add File
-              </button>
-            </div>
+            <div className="flex items-center gap-2">
+              <label className="px-3 py-1.5 rounded-xl bg-indigo-500/10 border border-indigo-500/30 text-indigo-600 dark:text-indigo-400 font-extrabold text-[11px] hover:bg-indigo-600 hover:text-white transition-all cursor-pointer flex items-center gap-1 shadow-2xs">
+                <span>📎 Add File / Report</span>
+                <input
+                  type="file"
+                  className="hidden"
+                  accept=".pdf,.png,.jpg,.jpeg,.stl,.dcm"
+                  onChange={(e) => {
+                    const file = e.target.files[0];
+                    if (file) {
+                      const reader = new FileReader();
+                      reader.onload = (ev) => {
+                        setFiles((prev) => [...prev, { fileName: file.name, fileType: file.type.includes('pdf') ? 'PDF Report' : 'Scan File', fileUrl: ev.target.result }]);
+                      };
+                      reader.readAsDataURL(file);
+                    }
+                  }}
+                />
+              </label>
 
-            {files.length > 0 && (
-              <div className="flex flex-wrap gap-2 pt-1">
-                {files.map((f, idx) => (
-                  <span
-                    key={idx}
-                    className="flex items-center gap-1.5 text-[9px] font-black uppercase text-indigo-500 bg-indigo-500/10 border border-indigo-500/20 px-2 py-0.5 rounded-full"
-                  >
-                    <FileText className="h-3 w-3" />
-                    {f}
-                  </span>
-                ))}
-              </div>
-            )}
+              {files.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {files.map((f, idx) => (
+                    <span key={idx} className="text-[10px] font-extrabold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 px-2.5 py-1 rounded-md border border-emerald-300 flex items-center gap-1">
+                      📄 {typeof f === 'string' ? f : f.fileName}
+                      <button type="button" onClick={() => setFiles(files.filter((_, i) => i !== idx))} className="text-rose-500 hover:text-rose-700 font-bold ml-1">✕</button>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="flex justify-end gap-2 pt-4 border-t border-border">
@@ -521,12 +536,57 @@ export function LabCasesPage() {
               <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
                 {Array.isArray(activeCommentingCase.comments) && activeCommentingCase.comments.length > 0 ? (
                   activeCommentingCase.comments.map((cm) => (
-                    <div key={cm.id} className="p-2.5 bg-card border border-border rounded-xl space-y-1">
+                    <div key={cm.id} className="p-2.5 bg-card border border-border rounded-xl space-y-1 text-left">
                       <div className="flex items-center justify-between text-[10px]">
                         <span className="font-extrabold text-primary">{cm.authorName} <span className="text-muted-foreground font-normal">({cm.authorRole})</span></span>
-                        <span className="text-muted-foreground font-mono text-[9px]">{new Date(cm.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-muted-foreground font-mono text-[9px]">{new Date(cm.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              if (window.confirm('Are you sure you want to delete this note/attachment permanently?')) {
+                                await deleteCaseComment(activeCommentingCase.id, cm.id);
+                                toast.success('Note/Attachment deleted successfully.');
+                              }
+                            }}
+                            className="text-rose-500 hover:text-rose-700 font-extrabold text-[10px] cursor-pointer flex items-center gap-0.5"
+                            title="Delete Note"
+                          >
+                            🗑️ Delete
+                          </button>
+                        </div>
                       </div>
-                      <p className="text-[11px] text-foreground font-medium">{cm.text}</p>
+                      {cm.text && <p className="text-[11px] text-foreground font-medium">{cm.text}</p>}
+                      
+                      {cm.attachment && (
+                        <div className="mt-1.5 p-2 bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 rounded-xl flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 overflow-hidden">
+                            <span className="text-sm">📄</span>
+                            <div className="min-w-0 text-left">
+                              <p className="text-[11px] font-black text-indigo-700 dark:text-indigo-300 truncate">{cm.attachment.fileName}</p>
+                              <span className="text-[9px] font-bold text-muted-foreground">{cm.attachment.fileType || 'Lab Report'}</span>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              openReportInNewTab({
+                                fileName: cm.attachment?.fileName || 'Lab_Report.pdf',
+                                patientName: activeCommentingCase?.patientName || 'Patient',
+                                labName: activeCommentingCase?.labName || 'Pacific Dental Lab',
+                                type: activeCommentingCase?.type || 'Restoration',
+                                authorName: cm.authorName,
+                                fileUrl: cm.attachment?.fileUrl,
+                                fileType: cm.attachment?.fileType,
+                                text: cm.text
+                              });
+                            }}
+                            className="px-2.5 py-1 rounded-lg bg-indigo-600 text-white text-[9.5px] font-black hover:bg-indigo-700 transition-all shadow-xs shrink-0 flex items-center gap-1 cursor-pointer"
+                          >
+                            👁️ View Report
+                          </button>
+                        </div>
+                      )}
                     </div>
                   ))
                 ) : (
@@ -544,32 +604,69 @@ export function LabCasesPage() {
                 rows={2}
                 className="w-full p-2.5 bg-background border border-border rounded-xl text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-primary"
               />
+
+              {/* Attachment Badge / Upload Option */}
+              <div className="flex items-center gap-2 py-1">
+                <label className="px-2.5 py-1 rounded-lg bg-indigo-500/10 border border-indigo-500/30 text-indigo-600 dark:text-indigo-400 font-extrabold text-[10px] hover:bg-indigo-600 hover:text-white transition-all cursor-pointer flex items-center gap-1 shadow-2xs">
+                  <span>📎 Attach Report / Scan</span>
+                  <input
+                    type="file"
+                    className="hidden"
+                    accept=".pdf,.png,.jpg,.jpeg,.stl,.dcm"
+                    onChange={(e) => {
+                      const file = e.target.files[0];
+                      if (file) {
+                        const reader = new FileReader();
+                        reader.onload = (ev) => {
+                          setFiles((prev) => [...prev, { fileName: file.name, fileType: file.type.includes('pdf') ? 'PDF Report' : 'Scan File', fileUrl: ev.target.result }]);
+                        };
+                        reader.readAsDataURL(file);
+                      }
+                    }}
+                  />
+                </label>
+
+                {files.length > 0 && (
+                  <div className="flex flex-wrap gap-1">
+                    {files.map((f, idx) => (
+                      <span key={idx} className="text-[10px] font-extrabold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-md border border-emerald-300 flex items-center gap-1">
+                        📄 {f.fileName}
+                        <button type="button" onClick={() => setFiles(files.filter((_, i) => i !== idx))} className="text-rose-500 hover:text-rose-700">✕</button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               <div className="flex justify-between items-center">
                 <select
                   value={commentRole}
                   onChange={(e) => setCommentRole(e.target.value)}
                   className="p-1.5 border border-border bg-background rounded-lg text-[10px] font-bold cursor-pointer"
                 >
-                  <option value="Lab Technician">Lab Technician</option>
+                  <option value="Lab Technician">Lab Technician (V LAB CO-ORDINATOR)</option>
                   <option value="Dr. Arthur Vance, DDS">Dr. Arthur Vance (Dentist)</option>
                 </select>
 
                 <Button
                   size="sm"
                   onClick={async () => {
-                    if (!newCommentText.trim()) return;
+                    if (!newCommentText.trim() && files.length === 0) return;
+                    const latestFile = files[files.length - 1] || null;
                     await useLabStore.getState().addCaseComment(
                       activeCommentingCase.id, 
-                      newCommentText.trim(), 
+                      newCommentText.trim() || (latestFile ? `Attached Lab Report: ${latestFile.fileName}` : ''), 
                       commentRole, 
-                      commentRole.includes('Doctor') || commentRole.includes('DDS') ? 'Dentist' : 'Lab Tech'
+                      commentRole.includes('Doctor') || commentRole.includes('DDS') ? 'Dentist' : 'Lab Tech',
+                      latestFile
                     );
                     setNewCommentText('');
-                    toast.success('Communication note posted to lab case file.');
+                    setFiles([]);
+                    toast.success('Communication note & report posted to lab case file.');
                   }}
                   className="font-bold text-xs h-8 cursor-pointer"
                 >
-                  Post Note
+                  Post Note & Report
                 </Button>
               </div>
             </div>

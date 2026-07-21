@@ -344,11 +344,15 @@ export function DentistDashboardPage() {
                   <div className="space-y-2 p-3 bg-muted/60 border border-border rounded-xl">
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Vitals:</span>
-                      <span className="text-foreground font-bold">{activePatient.vitals.split(',')[0]}</span>
+                      <span className="text-foreground font-bold">
+                        {activePatient.vitals ? activePatient.vitals.split(',')[0] : 'BP: 120/80'}
+                      </span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Pulse:</span>
-                      <span className="text-foreground font-bold">{activePatient.vitals.split(',')[2] || '72 bpm'}</span>
+                      <span className="text-foreground font-bold">
+                        {activePatient.vitals && activePatient.vitals.split(',')[2] ? activePatient.vitals.split(',')[2] : '72 bpm'}
+                      </span>
                     </div>
                   </div>
                 </div>

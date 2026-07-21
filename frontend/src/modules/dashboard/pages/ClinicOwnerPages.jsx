@@ -1265,30 +1265,10 @@ export function ClinicStaffPage() {
       render: (s) => {
         const isDentist = s.role === 'Dentist';
         const specText = isDentist && s.speciality ? ` (${s.speciality})` : '';
-        const assistant = staff.find((m) => m.id === s.assistantId);
-        const hygienist = staff.find((m) => m.id === s.hygienistId);
         return (
-          <div className="flex flex-col gap-1.5 text-left">
-            <span className="font-semibold text-slate-700 dark:text-slate-200">
-              {s.role}{specText}
-            </span>
-            {isDentist && (assistant || hygienist) && (
-              <div className="flex flex-col gap-1 text-[11px] text-slate-400 mt-0.5">
-                {assistant && (
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="text-[9px] font-extrabold uppercase tracking-wider bg-slate-100 dark:bg-slate-800 text-slate-500 px-1.5 py-0.5 rounded">Asst</span>
-                    <span className="font-medium text-slate-600 dark:text-slate-300">{assistant.name}</span>
-                  </div>
-                )}
-                {hygienist && (
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="text-[9px] font-extrabold uppercase tracking-wider bg-indigo-50 dark:bg-indigo-950/45 text-indigo-500 dark:text-indigo-400 px-1.5 py-0.5 rounded">Hyg</span>
-                    <span className="font-medium text-slate-600 dark:text-slate-300">{hygienist.name}</span>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+          <span className="font-semibold text-slate-700 dark:text-slate-200">
+            {s.role}{specText}
+          </span>
         );
       }
     },
@@ -1378,35 +1358,11 @@ export function ClinicStaffPage() {
                 { value: 'Lab Coordinator', label: 'Lab Coordinator' }
               ]}
             />
-            {role === 'Dentist' ? (
+            {role === 'Dentist' && (
               <Input label="Speciality" value={speciality} onChange={(e) => setSpeciality(e.target.value)} placeholder="e.g. Orthodontics, Surgery" />
-            ) : (
-              <div />
             )}
           </div>
 
-          {role === 'Dentist' && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 animate-fade-in">
-              <Select
-                label="Assistant"
-                value={assistantId}
-                onChange={(e) => setAssistantId(e.target.value)}
-                options={[
-                  { value: '', label: 'Select Assistant' },
-                  ...assistantsList.map((a) => ({ value: a.id, label: a.name }))
-                ]}
-              />
-              <Select
-                label="Hygienist"
-                value={hygienistId}
-                onChange={(e) => setHygienistId(e.target.value)}
-                options={[
-                  { value: '', label: 'Select Hygienist' },
-                  ...hygienistsList.map((h) => ({ value: h.id, label: h.name }))
-                ]}
-              />
-            </div>
-          )}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Input label="Phone Contact" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="e.g. (206) 555-4433" />
             <Input label="Email Address" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="e.g. robert@clinic.com" />
@@ -1451,35 +1407,11 @@ export function ClinicStaffPage() {
                   { value: 'Lab Coordinator', label: 'Lab Coordinator' }
                 ]}
               />
-              {role === 'Dentist' ? (
+              {role === 'Dentist' && (
                 <Input label="Speciality" value={speciality} onChange={(e) => setSpeciality(e.target.value)} />
-              ) : (
-                <div />
               )}
             </div>
 
-            {role === 'Dentist' && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 animate-fade-in">
-                <Select
-                  label="Assistant"
-                  value={assistantId}
-                  onChange={(e) => setAssistantId(e.target.value)}
-                  options={[
-                    { value: '', label: 'Select Assistant' },
-                    ...assistantsList.map((a) => ({ value: a.id, label: a.name }))
-                  ]}
-                />
-                <Select
-                  label="Hygienist"
-                  value={hygienistId}
-                  onChange={(e) => setHygienistId(e.target.value)}
-                  options={[
-                    { value: '', label: 'Select Hygienist' },
-                    ...hygienistsList.map((h) => ({ value: h.id, label: h.name }))
-                  ]}
-                />
-              </div>
-            )}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input label="Phone Contact" value={phone} onChange={(e) => setPhone(e.target.value)} />
               <Input label="Email Address" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />

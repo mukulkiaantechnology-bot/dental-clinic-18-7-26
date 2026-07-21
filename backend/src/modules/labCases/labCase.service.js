@@ -242,7 +242,7 @@ const updateCrownTracking = async ({ id, clinicId, toothNumber, material, shade,
   return getLabCaseById({ id, clinicId });
 };
 
-const addLabCaseComment = async ({ id, clinicId, text, authorName, authorRole }) => {
+const addLabCaseComment = async ({ id, clinicId, text, authorName, authorRole, attachment }) => {
   const labCase = await prisma.labCase.findFirst({ where: { id, clinicId } });
   if (!labCase) {
     throw Object.assign(new Error('Lab case not found'), { statusCode: 404 });
@@ -259,13 +259,45 @@ const addLabCaseComment = async ({ id, clinicId, text, authorName, authorRole })
 
   const newComment = {
     id: `comment-${Date.now()}`,
-    text,
+    text: text || '',
     authorName: authorName || 'Staff',
     authorRole: authorRole || 'Staff',
+    attachment: attachment || null,
     createdAt: new Date().toISOString()
   };
 
   const updatedComments = [...existingComments, newComment];
+
+  const updatedLabCase = await prisma.labCase.update({
+    where: { id },
+    data: {
+      comments: JSON.stringify(updatedComments)
+    },
+    include: {
+      crownDetails: true,
+      implantDetails: true
+    }
+  });
+
+  return mapLabCase(updatedLabCase);
+};
+
+const deleteLabCaseComment = async ({ id, clinicId, commentId }) => {
+  const labCase = await prisma.labCase.findFirst({ where: { id, clinicId } });
+  if (!labCase) {
+    throw Object.assign(new Error('Lab case not found'), { statusCode: 404 });
+  }
+
+  let existingComments = [];
+  if (labCase.comments) {
+    try {
+      existingComments = typeof labCase.comments === 'string' ? JSON.parse(labCase.comments) : labCase.comments;
+    } catch (e) {
+      existingComments = [];
+    }
+  }
+
+  const updatedComments = existingComments.filter(cm => String(cm.id) !== String(commentId));
 
   const updatedLabCase = await prisma.labCase.update({
     where: { id },
@@ -289,5 +321,6 @@ module.exports = {
   assignLabCase,
   updateImplantStage,
   updateCrownTracking,
-  addLabCaseComment
+  addLabCaseComment,
+  deleteLabCaseComment
 };
