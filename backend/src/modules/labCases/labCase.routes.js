@@ -51,4 +51,10 @@ router.put(
   controller.updateCrown
 );
 
+router.post(
+  '/:id/comments',
+  authorize('super_admin', 'clinic_owner', 'dentist', 'lab_coordinator', 'dental_assistant'),
+  controller.addComment
+);
+
 module.exports = router;

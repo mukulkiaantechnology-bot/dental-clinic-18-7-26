@@ -13,8 +13,17 @@ const mapStatusFromDb = (status) => {
 
 const mapLabCase = (labCase) => {
   if (!labCase) return labCase;
+  let comments = [];
+  if (labCase.comments) {
+    try {
+      comments = typeof labCase.comments === 'string' ? JSON.parse(labCase.comments) : labCase.comments;
+    } catch (e) {
+      comments = [];
+    }
+  }
   return {
     ...labCase,
+    comments,
     status: mapStatusFromDb(labCase.status)
   };
 };
@@ -233,6 +242,45 @@ const updateCrownTracking = async ({ id, clinicId, toothNumber, material, shade,
   return getLabCaseById({ id, clinicId });
 };
 
+const addLabCaseComment = async ({ id, clinicId, text, authorName, authorRole }) => {
+  const labCase = await prisma.labCase.findFirst({ where: { id, clinicId } });
+  if (!labCase) {
+    throw Object.assign(new Error('Lab case not found'), { statusCode: 404 });
+  }
+
+  let existingComments = [];
+  if (labCase.comments) {
+    try {
+      existingComments = typeof labCase.comments === 'string' ? JSON.parse(labCase.comments) : labCase.comments;
+    } catch (e) {
+      existingComments = [];
+    }
+  }
+
+  const newComment = {
+    id: `comment-${Date.now()}`,
+    text,
+    authorName: authorName || 'Staff',
+    authorRole: authorRole || 'Staff',
+    createdAt: new Date().toISOString()
+  };
+
+  const updatedComments = [...existingComments, newComment];
+
+  const updatedLabCase = await prisma.labCase.update({
+    where: { id },
+    data: {
+      comments: JSON.stringify(updatedComments)
+    },
+    include: {
+      crownDetails: true,
+      implantDetails: true
+    }
+  });
+
+  return mapLabCase(updatedLabCase);
+};
+
 module.exports = {
   listLabCases,
   getLabCaseById,
@@ -240,5 +288,6 @@ module.exports = {
   updateLabCaseStatus,
   assignLabCase,
   updateImplantStage,
-  updateCrownTracking
+  updateCrownTracking,
+  addLabCaseComment
 };

@@ -83,6 +83,24 @@ const updateCrown = async (req, res, next) => {
   }
 };
 
+const addComment = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const clinicId = req.clinicId || req.user?.clinicId || 'clinic-1';
+    const { text, authorName, authorRole } = req.body;
+    const labCase = await labCaseService.addLabCaseComment({
+      id,
+      clinicId,
+      text,
+      authorName,
+      authorRole
+    });
+    return success(res, labCase, 'Comment added successfully');
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   list,
   get,
@@ -90,5 +108,6 @@ module.exports = {
   updateStatus,
   assignLab,
   updateImplant,
-  updateCrown
+  updateCrown,
+  addComment
 };
