@@ -154,7 +154,9 @@ export const useDentistStore = create((set, get) => ({
         tooth: proc.tooth,
         procedure: proc.procedure,
         cost: proc.cost,
-        status: 'Proposed'
+        status: proc.status || 'Proposed',
+        optionGroup: proc.optionGroup || 'Option A',
+        phase: proc.phase || 'Phase 1'
       });
       const newProc = data.data;
       set((state) => {
@@ -210,9 +212,10 @@ export const useDentistStore = create((set, get) => ({
   addXray: async (patientId, xrayFile, fileBlob) => {
     try {
       const formData = new FormData();
-      formData.append('file', fileBlob);
+      if (fileBlob) formData.append('file', fileBlob);
       formData.append('type', xrayFile.type || 'General');
       formData.append('notes', xrayFile.notes || 'Manually uploaded radiograph file.');
+      if (xrayFile.toothNumber) formData.append('toothNumber', xrayFile.toothNumber);
       const { data } = await api.post(`/patients/${patientId}/xrays`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });

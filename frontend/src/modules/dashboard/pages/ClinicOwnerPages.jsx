@@ -1,4 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useAuthStore } from '../../../store/authStore';
 import {
   Users,
   Plus,
@@ -17,7 +19,8 @@ import {
   Clock,
   ShieldCheck,
   Eye,
-  Search
+  Search,
+  LogIn
 } from 'lucide-react';
 import api from '../../../shared/utils/api';
 import {
@@ -35,7 +38,6 @@ import {
 } from 'recharts';
 import { useClinicOwnerStore } from '../../../store/clinicOwnerStore';
 import { useBillingStore } from '../../../store/billingStore';
-import { useAuthStore } from '../../../store/authStore';
 import { useSuperAdminStore } from '../../../store/superAdminStore';
 import { useSubscriptionStore } from '../../../store/subscriptionStore';
 import { DataTable } from '../../../shared/ui/DataTable';
@@ -1058,12 +1060,59 @@ export function ClinicBillingPage() {
 
 // 5. STAFF DIRECTORY PAGE (CRUD)
 export function ClinicStaffPage() {
+  const navigate = useNavigate();
   const { staff, fetchStaff, addStaff, updateStaff, deleteStaff } = useClinicOwnerStore();
   const toast = useToast();
 
   useEffect(() => {
     fetchStaff();
   }, [fetchStaff]);
+
+  const handleDirectLogin = (stf) => {
+    const roleMapping = {
+      'Dentist': 'dentist',
+      'Assistant': 'dental_assistant',
+      'Hygienist': 'hygienist',
+      'Front Desk': 'front_desk',
+      'Billing Staff': 'billing_staff',
+      'Lab Coordinator': 'lab_coordinator',
+      'Patient': 'patient'
+    };
+    const roleKey = stf.rawRole || roleMapping[stf.role] || (stf.role || '').toLowerCase().replace(/\s+/g, '_');
+
+    const pathMapping = {
+      'dentist': '/dentist/dashboard',
+      'dental_assistant': '/assistant/dashboard',
+      'hygienist': '/hygienist/dashboard',
+      'front_desk': '/frontdesk/dashboard',
+      'billing_staff': '/billing',
+      'lab_coordinator': '/lab/cases',
+      'patient': '/patient/dashboard'
+    };
+    const targetPath = pathMapping[roleKey] || '/clinic/dashboard';
+
+    const currentAdminUser = useAuthStore.getState().user;
+    if (!localStorage.getItem('hms_original_admin_user') && currentAdminUser) {
+      localStorage.setItem('hms_original_admin_user', JSON.stringify(currentAdminUser));
+    }
+
+    const impersonatedUser = {
+      id: stf.id,
+      name: stf.name,
+      email: stf.email,
+      role: roleKey,
+      clinicId: currentAdminUser?.clinicId || 'clinic-1',
+      status: 'Approved',
+      avatarUrl: stf.avatarUrl || null,
+      isImpersonated: true
+    };
+
+    localStorage.setItem('hms_auth_user', JSON.stringify(impersonatedUser));
+    useAuthStore.setState({ user: impersonatedUser, isAuthenticated: true });
+
+    toast.success(`Direct login as ${stf.name} (${stf.role})`);
+    navigate(targetPath);
+  };
 
   const baseStaff = useMemo(() => {
     return staff.filter((s) => {
@@ -1251,7 +1300,16 @@ export function ClinicStaffPage() {
       header: 'Actions',
       align: 'right',
       render: (s) => (
-        <div className="flex gap-1 justify-end">
+        <div className="flex gap-1 justify-end items-center">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => handleDirectLogin(s)}
+            className="h-8 w-8 rounded-full hover:bg-indigo-500/10"
+            title={`Direct Login as ${s.name} (${s.role})`}
+          >
+            <LogIn className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+          </Button>
           <Button variant="ghost" size="icon" onClick={() => handleOpenEdit(s)} className="h-8 w-8 rounded-full">
             <Edit2 className="h-4 w-4 text-muted-foreground hover:text-primary" />
           </Button>

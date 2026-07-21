@@ -23,15 +23,31 @@ export const useLabStore = create((set, get) => ({
         const mappedCases = fetchedCases.map(c => {
           if (c.crownDetails) crownCases.push(c.crownDetails);
           if (c.implantDetails) implantCases.push(c.implantDetails);
+          let comments = [];
+          if (c.comments) {
+            try {
+              comments = typeof c.comments === 'string' ? JSON.parse(c.comments) : c.comments;
+            } catch (e) {
+              comments = [];
+            }
+          }
           return {
             ...c,
+            comments,
             expectedDelivery: c.expectedDelivery ? c.expectedDelivery.split('T')[0] : 'N/A'
           };
         });
         set((state) => {
-          const existingIds = new Set(mappedCases.map(c => c.id));
+          const mergedCases = mappedCases.map(sc => {
+            const local = state.labCases.find(lc => lc.id === sc.id);
+            if (local && (!sc.comments || sc.comments.length === 0) && local.comments && local.comments.length > 0) {
+              return { ...sc, comments: local.comments };
+            }
+            return sc;
+          });
+          const existingIds = new Set(mergedCases.map(c => c.id));
           const localOnly = state.labCases.filter(c => !existingIds.has(c.id));
-          return { labCases: [...localOnly, ...mappedCases], crownCases, implantCases };
+          return { labCases: [...localOnly, ...mergedCases], crownCases, implantCases };
         });
       }
     } catch (err) {
@@ -219,7 +235,7 @@ export const useLabStore = create((set, get) => ({
     }
   },
 
-  addCaseComment: (caseId, text, authorName, authorRole) => {
+  addCaseComment: async (caseId, text, authorName, authorRole) => {
     const commentObj = {
       id: `comment-${Date.now()}`,
       text,
@@ -236,5 +252,20 @@ export const useLabStore = create((set, get) => ({
         return c;
       })
     }));
+
+    try {
+      const { data } = await api.post(`/lab-cases/${caseId}/comments`, { text, authorName, authorRole });
+      if (data && data.success && data.data) {
+        const updatedCase = data.data;
+        let comments = Array.isArray(updatedCase.comments)
+          ? updatedCase.comments
+          : (typeof updatedCase.comments === 'string' ? JSON.parse(updatedCase.comments) : []);
+        set((state) => ({
+          labCases: state.labCases.map(c => c.id === caseId ? { ...c, ...updatedCase, comments } : c)
+        }));
+      }
+    } catch (err) {
+      console.error('Failed to post case comment to API', err);
+    }
   }
 }));

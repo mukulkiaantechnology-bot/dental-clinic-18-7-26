@@ -1435,7 +1435,7 @@ function MultiProviderCalendar({
         {CAL_SLOTS.map(slot => {
           const isCurrentSlot = isToday && currentHour === slot.hour && Math.abs(currentMinute - slot.minute) < 15;
           return (
-            <div key={slot.key} className="h-[116px] border-b border-border/40 flex flex-col items-center justify-center bg-card/60">
+            <div key={slot.key} className="min-h-[145px] border-b border-border/40 flex flex-col items-center justify-center bg-card/60 p-2">
               <span className={`text-xs font-black leading-none ${isCurrentSlot ? 'text-primary' : 'text-muted-foreground/80'}`}>
                 {slot.label.split(' ')[0]}
               </span>
@@ -1452,7 +1452,7 @@ function MultiProviderCalendar({
         {activeColumns.map((prov, ci) => (
           <div
             key={prov.id}
-            className={`flex-1 min-w-[260px] max-w-[360px] relative flex flex-col ${
+            className={`flex-1 min-w-[280px] max-w-[380px] relative flex flex-col ${
               ci < activeColumns.length - 1 ? 'border-r border-border/60' : ''
             }`}
           >
@@ -1476,7 +1476,7 @@ function MultiProviderCalendar({
                 <div
                   key={slot.key}
                   onClick={() => apts.length === 0 && handleCellClick(prov, slot)}
-                  className={`h-[116px] border-b border-border/30 relative p-2 transition-colors ${
+                  className={`min-h-[145px] border-b border-border/30 relative p-2.5 transition-colors ${
                     apts.length === 0 && canBook ? 'cursor-pointer hover:bg-muted/10' : ''
                   } ${isCurrentSlot ? 'bg-primary/5' : ''}`}
                 >
@@ -1492,7 +1492,7 @@ function MultiProviderCalendar({
                   )}
 
                   {apts.length > 0 ? (
-                    <div className="flex flex-col gap-2 h-full justify-start overflow-y-auto">
+                    <div className="flex flex-col gap-2.5 max-h-[320px] overflow-y-auto pr-1 select-none">
                       {apts.map(apt => {
                         const colors = getTypeColors(apt.type);
                         const stage = apt.workflowStage || 'SCHEDULED';
@@ -1505,65 +1505,86 @@ function MultiProviderCalendar({
                         return (
                           <div
                             key={apt.id}
-                            className={`group rounded-2xl border text-left text-xs transition-all hover:shadow-md cursor-pointer overflow-hidden p-2.5 flex flex-col justify-between h-full select-none ${colors.bg} ${colors.border}`}
+                            className={`group rounded-xl border text-left text-xs transition-all hover:shadow-lg cursor-pointer p-3 flex flex-col justify-between shrink-0 min-h-[115px] shadow-xs ${colors.bg} ${colors.border}`}
                             onClick={(e) => {
                               e.stopPropagation();
                               if (isWS) handleOpenWorkspace(apt.patientId, apt.id);
                             }}
                           >
-                            <div className="min-w-0 space-y-1.5">
-                              {/* Header: Type Badge & Time Badge */}
-                              <div className="flex items-center justify-between gap-1 border-b border-border/20 pb-1">
-                                <span className={`text-[10px] font-black leading-tight flex items-center gap-1 truncate ${colors.header}`}>
-                                  <span className="text-xs">{colors.icon}</span>
-                                  <span className="truncate uppercase tracking-wider">{apt.type || 'Appointment'}</span>
-                                </span>
+                            {/* Card Header: Type Badge & Time Pill */}
+                            <div className="flex items-center justify-between gap-1 pb-1.5 border-b border-border/25">
+                              <span className={`text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 px-2 py-0.5 rounded-md ${colors.header} bg-background/70 border border-border/30`}>
+                                <span>{colors.icon}</span>
+                                <span className="truncate">{apt.type || 'Appointment'}</span>
+                              </span>
 
-                                <span className="text-[9px] font-black text-muted-foreground bg-muted/80 px-2 py-0.5 rounded-md border border-border/40">
-                                  {apt.time}
-                                </span>
-                              </div>
+                              <span className="text-[9.5px] font-black text-muted-foreground bg-background/90 px-2 py-0.5 rounded-md border border-border/40 flex items-center gap-1 shadow-2xs">
+                                <Clock className="h-2.5 w-2.5 text-primary shrink-0" />
+                                {apt.time}
+                              </span>
+                            </div>
 
-                              {/* Patient Name */}
-                              <p className={`text-xs font-black truncate leading-snug ${colors.text}`}>
-                                {apt.patientName}
+                            {/* Card Body: Patient Name & Notes */}
+                            <div className="py-2 space-y-1">
+                              <p className="text-xs font-black text-foreground group-hover:text-primary transition-colors flex items-center gap-1.5">
+                                <User className="h-3.5 w-3.5 text-primary shrink-0" />
+                                <span className="truncate">{apt.patientName}</span>
                               </p>
 
                               {apt.notes && (
-                                <p className="text-[9.5px] text-muted-foreground/90 font-semibold truncate leading-tight">
+                                <p className="text-[10px] text-muted-foreground/90 font-semibold leading-snug bg-background/40 p-1.5 rounded-md border border-border/30">
                                   {apt.notes}
+                                </p>
+                              )}
+
+                              {apt.dentistName && (
+                                <p className="text-[9px] font-bold text-indigo-600 dark:text-indigo-400">
+                                  👨‍⚕️ {apt.dentistName}
                                 </p>
                               )}
                             </div>
 
-                            {/* Actions & Workflow Controls */}
-                            <div className="mt-2 flex items-center justify-between pt-1.5 border-t border-border/30 flex-shrink-0">
-                              <span className="text-[8.5px] font-black uppercase text-muted-foreground/90 bg-muted/60 px-2 py-0.5 rounded-md leading-none border border-border/40">
+                            {/* Card Footer: Workflow Stage & Actions */}
+                            <div className="pt-2 border-t border-border/30 flex items-center justify-between gap-1 flex-wrap">
+                              <span className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md border ${
+                                stage === 'COMPLETED' ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30' :
+                                stage === 'CHECKED_IN' ? 'bg-amber-500/10 text-amber-600 border-amber-500/30' :
+                                stage === 'IN_PROGRESS' ? 'bg-indigo-500/10 text-indigo-600 border-indigo-500/30' :
+                                'bg-blue-500/10 text-blue-600 border-blue-500/30'
+                              }`}>
                                 {WORKFLOW_STAGE_LABELS[stage] || stage}
                               </span>
 
-                              <div className="flex items-center gap-1.5">
-                                {/* Edit Button */}
+                              <div className="flex items-center gap-1">
+                                {canAdv && (
+                                  <button
+                                    type="button"
+                                    onClick={e => { e.stopPropagation(); handleStatusAdvance(apt); }}
+                                    disabled={saving}
+                                    className="px-2 py-1 rounded-md bg-primary text-white text-[9.5px] font-black hover:bg-primary/90 transition-all cursor-pointer shadow-2xs flex items-center gap-1 active:scale-95 disabled:opacity-50"
+                                    title={`Advance to ${flow.label}`}
+                                  >
+                                    {flow.label} ➔
+                                  </button>
+                                )}
+
                                 <button
                                   type="button"
                                   onClick={e => { e.stopPropagation(); handleOpenEdit(apt); }}
-                                  className="px-2 py-0.5 rounded-md bg-background/90 border border-border/80 text-[9px] font-bold text-foreground hover:bg-primary hover:text-white transition-all cursor-pointer shadow-2xs flex items-center gap-1"
+                                  className="p-1 rounded-md bg-background border border-border text-[9px] font-bold text-foreground hover:bg-muted transition-all cursor-pointer"
                                   title="Edit Appointment"
                                 >
-                                  <Edit2 className="h-2.5 w-2.5" />
-                                  Edit
+                                  <Edit2 className="h-3 w-3" />
                                 </button>
 
-                                {/* Delete Button */}
                                 <button
                                   type="button"
                                   onClick={e => { e.stopPropagation(); handleDelete(apt.id, apt.patientName); }}
                                   disabled={saving}
-                                  className="px-2 py-0.5 rounded-md bg-background/90 border border-border/80 text-[9px] font-bold text-rose-600 hover:bg-rose-600 hover:text-white transition-all cursor-pointer shadow-2xs flex items-center gap-1 disabled:opacity-50"
+                                  className="p-1 rounded-md bg-background border border-border text-[9px] font-bold text-rose-600 hover:bg-rose-600 hover:text-white transition-all cursor-pointer disabled:opacity-50"
                                   title="Cancel Appointment"
                                 >
-                                  <Trash2 className="h-2.5 w-2.5" />
-                                  Cancel
+                                  <Trash2 className="h-3 w-3" />
                                 </button>
                               </div>
                             </div>

@@ -2,6 +2,8 @@ import { useState, useMemo, useEffect } from 'react';
 import { Columns, Calendar, User, ArrowRight, ArrowLeft, FlaskConical, AlertCircle } from 'lucide-react';
 import { useLabStore } from '../../../store/labStore';
 import { Badge } from '../../../shared/ui/Badge';
+import { Button } from '../../../shared/ui/Button';
+import { Modal } from '../../../shared/ui/Modal';
 import { useToast } from '../../../shared/hooks/useToast';
 
 const COLUMNS = ['Created', 'Sent', 'In Progress', 'Ready', 'Delivered'];
@@ -28,10 +30,20 @@ export function StatusBoardPage() {
 
   useEffect(() => {
     fetchLabCases();
+    const interval = setInterval(() => {
+      fetchLabCases();
+    }, 3000);
+    return () => clearInterval(interval);
   }, [fetchLabCases]);
 
   // Mobile Swipe/Select View State
   const [mobileActiveColumn, setMobileActiveColumn] = useState('Created');
+
+  // Case Comment Modal State
+  const [commentingCase, setCommentingCase] = useState(null);
+  const [newCommentText, setNewCommentText] = useState('');
+  const [commentRole, setCommentRole] = useState('Lab Technician');
+  const activeCommentingCase = commentingCase ? (labCases.find(c => c.id === commentingCase.id) || commentingCase) : null;
 
   // Move Case to Next or Previous column
   const moveCase = (caseId, direction) => {
@@ -144,8 +156,8 @@ export function StatusBoardPage() {
                       </div>
                     </div>
 
-                    {/* Quick navigation arrows */}
-                    <div className="mt-3 pt-3.5 border-t border-border/40 flex items-center justify-between opacity-0 group-hover:opacity-100 transition-opacity">
+                    {/* Quick navigation arrows & Notes button */}
+                    <div className="mt-3 pt-2.5 border-t border-border/40 flex items-center justify-between gap-1">
                       <button
                         disabled={col === 'Created'}
                         onClick={(e) => {
@@ -156,6 +168,20 @@ export function StatusBoardPage() {
                         title="Move Stage Back"
                       >
                         <ArrowLeft className="h-3 w-3" />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setCommentingCase(c);
+                        }}
+                        className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full transition-all cursor-pointer ${
+                          Array.isArray(c.comments) && c.comments.length > 0
+                            ? 'bg-indigo-600 text-white shadow-xs'
+                            : 'bg-indigo-500/10 text-indigo-500 hover:bg-indigo-500/20'
+                        }`}
+                        title="View Doctor Chat & Notes"
+                      >
+                        💬 Notes ({Array.isArray(c.comments) ? c.comments.length : 0})
                       </button>
                       <button
                         disabled={col === 'Delivered'}
@@ -256,6 +282,94 @@ export function StatusBoardPage() {
           </div>
         )}
       </div>
+
+      {/* Doctor ↔ Lab Technician Communication Notes Modal */}
+      {activeCommentingCase && (
+        <Modal
+          isOpen={Boolean(activeCommentingCase)}
+          onClose={() => setCommentingCase(null)}
+          title={`Lab Case Communication Thread — #${activeCommentingCase.id}`}
+        >
+          <div className="space-y-4 text-left text-xs font-semibold">
+            <div className="p-3 bg-muted/40 border border-border rounded-xl flex items-center justify-between">
+              <div>
+                <span className="font-extrabold text-foreground block">{activeCommentingCase.patientName}</span>
+                <span className="text-[10px] text-muted-foreground font-bold uppercase">
+                  {activeCommentingCase.type} &bull; {activeCommentingCase.labName}
+                </span>
+              </div>
+              <Badge variant="info" className="font-bold">{activeCommentingCase.status}</Badge>
+            </div>
+
+            {activeCommentingCase.notes && (
+              <div className="p-3 bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 rounded-xl space-y-0.5">
+                <span className="text-[9px] font-black uppercase tracking-wider block">Clinical Instructions</span>
+                <p className="text-[11px] font-bold leading-relaxed">{activeCommentingCase.notes}</p>
+              </div>
+            )}
+
+            {/* Discussion Thread */}
+            <div className="space-y-2 border-t border-border pt-3">
+              <label className="text-[10px] font-extrabold text-muted-foreground uppercase tracking-wider block">Discussion & Shade Notes Thread</label>
+              
+              <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
+                {Array.isArray(activeCommentingCase.comments) && activeCommentingCase.comments.length > 0 ? (
+                  activeCommentingCase.comments.map((cm) => (
+                    <div key={cm.id} className="p-2.5 bg-card border border-border rounded-xl space-y-1">
+                      <div className="flex items-center justify-between text-[10px]">
+                        <span className="font-extrabold text-primary">{cm.authorName} <span className="text-muted-foreground font-normal">({cm.authorRole})</span></span>
+                        <span className="text-muted-foreground font-mono text-[9px]">{new Date(cm.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                      </div>
+                      <p className="text-[11px] text-foreground font-medium">{cm.text}</p>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-[10px] text-muted-foreground font-medium italic text-center py-4">No communication notes posted yet for this case.</p>
+                )}
+              </div>
+            </div>
+
+            {/* Post New Note */}
+            <div className="space-y-2 border-t border-border pt-3">
+              <textarea
+                value={newCommentText}
+                onChange={(e) => setNewCommentText(e.target.value)}
+                placeholder="Type doctor or lab technician case note / shade query..."
+                rows={2}
+                className="w-full p-2.5 bg-background border border-border rounded-xl text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+              <div className="flex justify-between items-center">
+                <select
+                  value={commentRole}
+                  onChange={(e) => setCommentRole(e.target.value)}
+                  className="p-1.5 border border-border bg-background rounded-lg text-[10px] font-bold cursor-pointer"
+                >
+                  <option value="Lab Technician">Lab Technician</option>
+                  <option value="Dr. Arthur Vance, DDS">Dr. Arthur Vance (Dentist)</option>
+                </select>
+
+                <Button
+                  size="sm"
+                  onClick={async () => {
+                    if (!newCommentText.trim()) return;
+                    await useLabStore.getState().addCaseComment(
+                      activeCommentingCase.id, 
+                      newCommentText.trim(), 
+                      commentRole, 
+                      commentRole.includes('Doctor') || commentRole.includes('DDS') ? 'Dentist' : 'Lab Tech'
+                    );
+                    setNewCommentText('');
+                    toast.success('Communication note posted to lab case file.');
+                  }}
+                  className="font-bold text-xs h-8 cursor-pointer"
+                >
+                  Post Note
+                </Button>
+              </div>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

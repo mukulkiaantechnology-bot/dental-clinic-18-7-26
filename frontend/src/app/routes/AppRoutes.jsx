@@ -138,6 +138,45 @@ function RoleLayoutWrapper() {
   }
 }
 
+function ImpersonationBanner() {
+  const user = useAuthStore((state) => state.user);
+  const originalAdmin = localStorage.getItem('hms_original_admin_user');
+
+  if (!originalAdmin || !user) return null;
+
+  const handleReturnToAdmin = () => {
+    try {
+      const adminUser = JSON.parse(originalAdmin);
+      localStorage.removeItem('hms_original_admin_user');
+      localStorage.setItem('hms_auth_user', JSON.stringify(adminUser));
+      useAuthStore.setState({ user: adminUser, isAuthenticated: true });
+      window.location.href = '/clinic/staff';
+    } catch {
+      localStorage.removeItem('hms_original_admin_user');
+      window.location.href = '/login';
+    }
+  };
+
+  return (
+    <div className="bg-indigo-600 text-white px-4 py-2 text-xs font-bold flex items-center justify-between z-[9999] shadow-md border-b border-indigo-700 select-none">
+      <div className="flex items-center gap-2">
+        <span className="bg-white/20 text-white px-2 py-0.5 rounded text-[10px] uppercase font-black tracking-wider">
+          🔑 Admin Direct Login Active
+        </span>
+        <span>
+          Viewing section as: <strong>{user.name}</strong> ({user.role ? user.role.replace('_', ' ') : 'Staff'})
+        </span>
+      </div>
+      <button
+        onClick={handleReturnToAdmin}
+        className="bg-white hover:bg-slate-100 text-indigo-900 px-3 py-1 rounded-md text-[10px] font-black uppercase tracking-wider cursor-pointer shadow-xs transition-transform active:scale-95 flex items-center gap-1"
+      >
+        Return to Admin Staff Panel ↩
+      </button>
+    </div>
+  );
+}
+
 export function AppRoutes() {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const user = useAuthStore((state) => state.user);
@@ -157,6 +196,7 @@ export function AppRoutes() {
 
   return (
     <BrowserRouter>
+      <ImpersonationBanner />
       <ToastContainer />
       <Routes>
         {/* Public Routes */}

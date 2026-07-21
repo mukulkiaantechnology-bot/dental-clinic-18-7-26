@@ -409,6 +409,10 @@ export function PatientDetailPage() {
     if (id) {
       fetchPatientDetails(id);
     }
+    const interval = setInterval(() => {
+      fetchLabCases();
+    }, 3000);
+    return () => clearInterval(interval);
   }, [id, fetchPatients, fetchAppointments, fetchPatientDetails, fetchLabCases]);
 
   useEffect(() => {
@@ -1058,11 +1062,14 @@ function OverviewTab({ patient }) {
 
 // 2. DENTAL CHART TAB (ODONTOGRAM)
 function DentalChartTab({ patientId }) {
-  const { odontograms, updateToothCondition, addProcedure, treatmentPlans } = useDentistStore();
+  const { odontograms, updateToothCondition, addProcedure, treatmentPlans, xrays, addXray } = useDentistStore();
   const toast = useToast();
   const [selectedTooth, setSelectedTooth] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [dentitionMode, setDentitionMode] = useState('adult'); // 'adult' | 'primary'
+  const [modalSubTab, setModalSubTab] = useState('charting'); // 'charting' | 'history' | 'xrays'
+  const [toothXrayFile, setToothXrayFile] = useState(null);
+  const [toothXrayNotes, setToothXrayNotes] = useState('');
 
   // Selection states inside modal
   const [condition, setCondition] = useState('Healthy');
@@ -1074,6 +1081,7 @@ function DentalChartTab({ patientId }) {
 
   const patientChart = odontograms[patientId] || {};
   const plans = (treatmentPlans[patientId] || []);
+  const patientXrays = xrays[patientId] || [];
 
   // Adult teeth: Universal numbering 1-32
   // Primary teeth: Universal letters A-T (maxillary A-J, mandibular K-T)
@@ -1088,6 +1096,7 @@ function DentalChartTab({ patientId }) {
 
   const handleToothClick = (toothNum) => {
     setSelectedTooth(toothNum);
+    setModalSubTab('charting');
     const existing = patientChart[toothNum];
 
     if (existing && typeof existing === 'object') {
@@ -1529,131 +1538,248 @@ function DentalChartTab({ patientId }) {
       {/* Tooth Condition Modal */}
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={`Diagnose Tooth ${typeof selectedTooth === 'number' ? '#' : ''}${selectedTooth}`}>
         <div className="space-y-4 text-left">
-
-          {/* Condition */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider block">Clinical Condition</label>
-            <Select
-              value={condition}
-              onChange={(e) => setCondition(e.target.value)}
-              options={[
-                { value: 'Healthy',            label: 'Healthy' },
-                { value: 'Caries',             label: 'Caries (Active Decay)' },
-                { value: 'Composite Filling',  label: 'Composite Filling (Tooth-Colored)' },
-                { value: 'Amalgam',            label: 'Amalgam Filling (Silver)' },
-                { value: 'Crown',              label: 'Crown (Full Coverage)' },
-                { value: 'Bridge',             label: 'Bridge (Abutment/Pontic)' },
-                { value: 'Implant',            label: 'Dental Implant' },
-                { value: 'RCT',               label: 'Root Canal Treatment (RCT)' },
-                { value: 'Fracture',           label: 'Fractured Cusp/Tooth' },
-                { value: 'Missing',            label: 'Missing / Extracted' },
-                { value: 'Extraction Planned', label: 'Extraction Planned' },
-                { value: 'Abfraction',         label: 'Abfraction (Cervical Notch)' },
-                { value: 'Wear',               label: 'Tooth Wear (Attrition/Abrasion)' },
-                { value: 'Erosion',            label: 'Erosion (Chemical/Acid)' },
-                { value: 'Abscess',            label: 'Abscess / Periapical Lesion' },
-              ]}
-            />
+          {/* Sub-tab Navigation */}
+          <div className="flex bg-muted p-1 rounded-xl gap-1 border border-border">
+            <button
+              type="button"
+              onClick={() => setModalSubTab('charting')}
+              className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                modalSubTab === 'charting' ? 'bg-primary text-white shadow-xs' : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              Diagnosis & Charting
+            </button>
+            <button
+              type="button"
+              onClick={() => setModalSubTab('history')}
+              className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                modalSubTab === 'history' ? 'bg-primary text-white shadow-xs' : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              Tooth History ({plans.filter(p => String(p.tooth) === String(selectedTooth)).length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setModalSubTab('xrays')}
+              className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                modalSubTab === 'xrays' ? 'bg-primary text-white shadow-xs' : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              Tooth X-Rays ({patientXrays.filter(x => String(x.toothNumber) === String(selectedTooth) || (x.notes && x.notes.includes(String(selectedTooth)))).length})
+            </button>
           </div>
 
-          {/* Implant fields */}
-          {condition === 'Implant' && (
-            <div className="space-y-3 bg-indigo-500/5 border border-indigo-500/20 rounded-xl p-3">
-              <p className="text-[10px] font-bold text-indigo-500 uppercase tracking-wider">Implant Details</p>
+          {modalSubTab === 'charting' && (
+            <div className="space-y-4">
+              {/* Condition */}
               <div className="space-y-1.5">
-                <label className="text-xs font-bold text-muted-foreground block">Implant Brand</label>
+                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider block">Clinical Condition</label>
+                <Select
+                  value={condition}
+                  onChange={(e) => setCondition(e.target.value)}
+                  options={[
+                    { value: 'Healthy',            label: 'Healthy' },
+                    { value: 'Caries',             label: 'Caries (Active Decay)' },
+                    { value: 'Composite Filling',  label: 'Composite Filling (Tooth-Colored)' },
+                    { value: 'Amalgam',            label: 'Amalgam Filling (Silver)' },
+                    { value: 'Crown',              label: 'Crown (Full Coverage)' },
+                    { value: 'Bridge',             label: 'Bridge (Abutment/Pontic)' },
+                    { value: 'Implant',            label: 'Dental Implant' },
+                    { value: 'RCT',               label: 'Root Canal Treatment (RCT)' },
+                    { value: 'Fracture',           label: 'Fractured Cusp/Tooth' },
+                    { value: 'Missing',            label: 'Missing / Extracted' },
+                    { value: 'Extraction Planned', label: 'Extraction Planned' },
+                    { value: 'Abfraction',         label: 'Abfraction (Cervical Notch)' },
+                    { value: 'Wear',               label: 'Tooth Wear (Attrition/Abrasion)' },
+                    { value: 'Erosion',            label: 'Erosion (Chemical/Acid)' },
+                    { value: 'Abscess',            label: 'Abscess / Periapical Lesion' },
+                  ]}
+                />
+              </div>
+
+              {/* Implant fields */}
+              {condition === 'Implant' && (
+                <div className="space-y-3 bg-indigo-500/5 border border-indigo-500/20 rounded-xl p-3">
+                  <p className="text-[10px] font-bold text-indigo-500 uppercase tracking-wider">Implant Details</p>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-muted-foreground block">Implant Brand</label>
+                    <input
+                      type="text"
+                      value={implantBrand}
+                      onChange={e => setImplantBrand(e.target.value)}
+                      placeholder="e.g. Nobel Biocare, Straumann..."
+                      className="w-full text-xs font-semibold bg-background border border-border rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-primary/40 text-foreground"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-muted-foreground block">Implant Info (size, lot, date)</label>
+                    <textarea
+                      value={implantInfo}
+                      onChange={e => setImplantInfo(e.target.value)}
+                      placeholder="e.g. 4.1mm × 10mm, Lot #ABC123, Placed 2024-03-15"
+                      rows={2}
+                      className="w-full text-xs font-semibold bg-background border border-border rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-primary/40 text-foreground resize-none"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Surface toggles */}
+              {condition !== 'Healthy' && condition !== 'Missing' && condition !== 'Abfraction' && condition !== 'Wear' && condition !== 'Erosion' && condition !== 'Abscess' && (
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider block">Affected Surfaces</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { key: 'B', label: 'B – Buccal' },
+                      { key: 'L', label: 'L – Lingual' },
+                      { key: 'M', label: 'M – Mesial' },
+                      { key: 'D', label: 'D – Distal' },
+                      { key: 'O', label: 'O – Occlusal' },
+                      { key: 'I', label: 'I – Incisal' }
+                    ].map(surf => (
+                      <button
+                        key={surf.key}
+                        type="button"
+                        onClick={() => toggleSurface(surf.key)}
+                        className={`p-2 border rounded-lg text-xs font-bold text-center cursor-pointer transition-all ${
+                          surfaces[surf.key]
+                            ? 'bg-rose-500 text-white border-rose-600 shadow-sm'
+                            : 'bg-card text-muted-foreground border-border hover:bg-muted/50'
+                        }`}
+                      >
+                        {surf.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Watch toggle + note */}
+              <div className="space-y-2 bg-amber-500/5 border border-amber-500/20 rounded-xl p-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-amber-600 flex items-center gap-1.5">
+                    👁 Watch / Monitor
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setIsWatch(!isWatch)}
+                    className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors cursor-pointer ${isWatch ? 'bg-amber-500' : 'bg-muted'}`}
+                  >
+                    <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${isWatch ? 'translate-x-4.5' : 'translate-x-0.5'}`} />
+                  </button>
+                </div>
+                {isWatch && (
+                  <textarea
+                    value={watchNote}
+                    onChange={e => setWatchNote(e.target.value)}
+                    placeholder="Clinical note for monitoring this tooth..."
+                    rows={2}
+                    className="w-full text-xs font-semibold bg-background border border-amber-300 dark:border-amber-500/30 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-amber-400/40 text-foreground resize-none mt-1.5"
+                  />
+                )}
+              </div>
+
+              {/* Action buttons */}
+              <div className="flex gap-3 pt-2">
+                <Button onClick={() => setIsModalOpen(false)} variant="outline" className="flex-1 font-bold text-xs h-11">Cancel</Button>
+                <Button onClick={handleSaveCondition} className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs h-11">Save Condition</Button>
+              </div>
+            </div>
+          )}
+
+          {modalSubTab === 'history' && (
+            <div className="space-y-3">
+              <h4 className="font-extrabold text-xs text-primary uppercase tracking-wider">
+                Historical Procedures & Transactions for Tooth #{selectedTooth}
+              </h4>
+              {plans.filter(p => String(p.tooth) === String(selectedTooth)).length > 0 ? (
+                <div className="space-y-2 max-h-60 overflow-y-auto">
+                  {plans.filter(p => String(p.tooth) === String(selectedTooth)).map(p => (
+                    <div key={p.id} className="p-3 bg-muted/40 border border-border rounded-xl flex items-center justify-between text-xs">
+                      <div>
+                        <span className="font-bold text-foreground block">{p.procedure}</span>
+                        <span className="text-[10px] text-muted-foreground font-semibold">
+                          Date: {new Date(p.createdAt || Date.now()).toLocaleDateString()}
+                        </span>
+                      </div>
+                      <div className="text-right">
+                        <span className="font-black text-emerald-600 block">${(p.cost || 0).toFixed(2)}</span>
+                        <Badge variant="secondary" className="text-[9px]">{p.status || 'Proposed'}</Badge>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground italic py-6 text-center">No recorded transactions or procedures for Tooth #{selectedTooth} yet.</p>
+              )}
+            </div>
+          )}
+
+          {modalSubTab === 'xrays' && (
+            <div className="space-y-3">
+              <h4 className="font-extrabold text-xs text-primary uppercase tracking-wider flex items-center justify-between">
+                <span>Radiographs & Images for Tooth #{selectedTooth}</span>
+              </h4>
+
+              {patientXrays.filter(x => String(x.toothNumber) === String(selectedTooth) || (x.notes && x.notes.includes(String(selectedTooth)))).length > 0 ? (
+                <div className="grid grid-cols-2 gap-3 max-h-56 overflow-y-auto">
+                  {patientXrays.filter(x => String(x.toothNumber) === String(selectedTooth) || (x.notes && x.notes.includes(String(selectedTooth)))).map(x => (
+                    <div key={x.id} className="p-2 bg-muted/40 border border-border rounded-xl space-y-1.5 text-xs text-left">
+                      {x.fileUrl && (
+                        <img src={x.fileUrl} alt={x.name} className="w-full h-24 object-cover rounded-lg border border-border/60" />
+                      )}
+                      <span className="font-bold text-foreground truncate block">{x.name}</span>
+                      <span className="text-[10px] text-muted-foreground font-semibold block">{new Date(x.date || Date.now()).toLocaleDateString()}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground italic py-4 text-center">No radiographs directly tagged to Tooth #{selectedTooth} yet.</p>
+              )}
+
+              <div className="border-t border-border pt-3 space-y-2">
+                <span className="text-[10px] font-extrabold uppercase text-muted-foreground block">Tag / Upload New Radiograph to Tooth #{selectedTooth}</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => setToothXrayFile(e.target.files[0])}
+                  className="w-full text-xs font-semibold bg-background border border-border rounded-lg p-1.5"
+                />
                 <input
                   type="text"
-                  value={implantBrand}
-                  onChange={e => setImplantBrand(e.target.value)}
-                  placeholder="e.g. Nobel Biocare, Straumann..."
-                  className="w-full text-xs font-semibold bg-background border border-border rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-primary/40 text-foreground"
+                  value={toothXrayNotes}
+                  onChange={(e) => setToothXrayNotes(e.target.value)}
+                  placeholder="Radiograph notes (e.g. Periapical, Bite-wing)..."
+                  className="w-full text-xs font-semibold bg-background border border-border rounded-lg p-2 focus:outline-none focus:ring-1 focus:ring-primary"
                 />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-muted-foreground block">Implant Info (size, lot, date)</label>
-                <textarea
-                  value={implantInfo}
-                  onChange={e => setImplantInfo(e.target.value)}
-                  placeholder="e.g. 4.1mm × 10mm, Lot #ABC123, Placed 2024-03-15"
-                  rows={2}
-                  className="w-full text-xs font-semibold bg-background border border-border rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-primary/40 text-foreground resize-none"
-                />
-              </div>
-            </div>
-          )}
+                <Button
+                  size="sm"
+                  onClick={async () => {
+                    if (!toothXrayFile) {
+                      toast.error('Please select an image file to upload.');
+                      return;
+                    }
+                    const res = await addXray(patientId, {
+                      type: 'Diagnostic X-Ray',
+                      notes: `Tooth #${selectedTooth}: ${toothXrayNotes}`,
+                      toothNumber: String(selectedTooth)
+                    }, toothXrayFile);
 
-          {/* Surface toggles */}
-          {condition !== 'Healthy' && condition !== 'Missing' && condition !== 'Abfraction' && condition !== 'Wear' && condition !== 'Erosion' && condition !== 'Abscess' && (
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider block">Affected Surfaces</label>
-              <div className="grid grid-cols-3 gap-2">
-                {[
-                  { key: 'B', label: 'B – Buccal' },
-                  { key: 'L', label: 'L – Lingual' },
-                  { key: 'M', label: 'M – Mesial' },
-                  { key: 'D', label: 'D – Distal' },
-                  { key: 'O', label: 'O – Occlusal' },
-                  { key: 'I', label: 'I – Incisal' }
-                ].map(surf => (
-                  <button
-                    key={surf.key}
-                    type="button"
-                    onClick={() => toggleSurface(surf.key)}
-                    className={`p-2 border rounded-lg text-xs font-bold text-center cursor-pointer transition-all ${
-                      surfaces[surf.key]
-                        ? 'bg-rose-500 text-white border-rose-600 shadow-sm'
-                        : 'bg-card text-muted-foreground border-border hover:bg-muted/50'
-                    }`}
-                  >
-                    {surf.label}
-                  </button>
-                ))}
+                    if (res.success) {
+                      toast.success(`Attached Radiograph to Tooth #${selectedTooth}!`);
+                      setToothXrayFile(null);
+                      setToothXrayNotes('');
+                    } else {
+                      toast.error(res.error || 'Upload failed');
+                    }
+                  }}
+                  className="w-full font-bold text-xs h-9 bg-indigo-600 hover:bg-indigo-700 text-white cursor-pointer"
+                >
+                  📷 Attach X-Ray to Tooth #{selectedTooth}
+                </Button>
               </div>
             </div>
           )}
-
-          {/* Watch toggle + note */}
-          <div className="space-y-2 bg-amber-500/5 border border-amber-500/20 rounded-xl p-3">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-amber-600 flex items-center gap-1.5">
-                👁 Watch / Monitor
-              </label>
-              <button
-                type="button"
-                onClick={() => setIsWatch(!isWatch)}
-                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors cursor-pointer ${isWatch ? 'bg-amber-500' : 'bg-muted'}`}
-              >
-                <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${isWatch ? 'translate-x-4.5' : 'translate-x-0.5'}`} />
-              </button>
-            </div>
-            {isWatch && (
-              <textarea
-                value={watchNote}
-                onChange={e => setWatchNote(e.target.value)}
-                placeholder="Clinical note for monitoring this tooth..."
-                rows={2}
-                className="w-full text-xs font-semibold bg-background border border-amber-300 dark:border-amber-500/30 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-amber-400/40 text-foreground resize-none mt-1.5"
-              />
-            )}
-          </div>
-
-          {/* Existing plan for this tooth */}
-          {selectedTooth && getToothPlan(selectedTooth) && (
-            <div className="bg-violet-500/5 border border-violet-500/20 rounded-xl p-3">
-              <p className="text-[10px] font-bold text-violet-500 uppercase tracking-wider mb-1">Treatment Plan Linked</p>
-              <p className="text-xs font-semibold text-foreground">{getToothPlan(selectedTooth).procedure}</p>
-              <p className="text-[10px] text-muted-foreground mt-0.5">
-                ${(getToothPlan(selectedTooth).cost || 0).toFixed(2)} • {getToothPlan(selectedTooth).status || 'Proposed'}
-              </p>
-            </div>
-          )}
-
-          {/* Action buttons */}
-          <div className="flex gap-3 pt-2">
-            <Button onClick={() => setIsModalOpen(false)} variant="outline" className="flex-1 font-bold text-xs h-11">Cancel</Button>
-            <Button onClick={handleSaveCondition} className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs h-11">Save Condition</Button>
-          </div>
         </div>
       </Modal>
     </div>
@@ -1826,34 +1952,133 @@ function TreatmentPlanTab({ patientId }) {
     toast.success(`Appended suggested procedure to ${selectedOption}.`);
   };
 
+  const [isCompareModalOpen, setIsCompareModalOpen] = useState(false);
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 py-4">
       {/* Option Version Selector Bar */}
       <div className="lg:col-span-3 bg-card border border-border p-4 rounded-2xl shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 text-left">
         <div>
           <h3 className="font-black text-sm uppercase text-foreground tracking-wider block">Treatment Alternatives</h3>
-          <p className="text-[10px] text-muted-foreground font-semibold mt-0.5">Toggle between distinct treatment plans to present options to the patient.</p>
+          <p className="text-[10px] text-muted-foreground font-semibold mt-0.5">Toggle between distinct treatment plans or compare them side-by-side.</p>
         </div>
-        <div className="flex bg-muted rounded-xl p-1 gap-1">
-          {['Option A', 'Option B', 'Option C'].map(opt => {
-            const optCount = rawPlans.filter(p => parseEncodedProcedure(p.procedure).option === opt).length;
-            return (
-              <button
-                key={opt}
-                type="button"
-                onClick={() => setSelectedOption(opt)}
-                className={`px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                  selectedOption === opt
-                    ? 'bg-primary text-white shadow-sm'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                {opt} {optCount > 0 && <span className="ml-1 text-[9px] bg-card text-foreground px-1.5 py-0.5 rounded-full font-black">{optCount}</span>}
-              </button>
-            );
-          })}
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setIsCompareModalOpen(true)}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-xl text-xs font-black tracking-wide shadow-xs flex items-center gap-1.5 cursor-pointer transition-all active:scale-95"
+          >
+            📊 Compare Options Side-by-Side
+          </button>
+          <div className="flex bg-muted rounded-xl p-1 gap-1">
+            {['Option A', 'Option B', 'Option C'].map(opt => {
+              const optCount = rawPlans.filter(p => parseEncodedProcedure(p.procedure).option === opt).length;
+              return (
+                <button
+                  key={opt}
+                  type="button"
+                  onClick={() => setSelectedOption(opt)}
+                  className={`px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    selectedOption === opt
+                      ? 'bg-primary text-white shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  {opt} {optCount > 0 && <span className="ml-1 text-[9px] bg-card text-foreground px-1.5 py-0.5 rounded-full font-black">{optCount}</span>}
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
+
+      {/* Side-by-Side Options Comparison Modal */}
+      <Modal isOpen={isCompareModalOpen} onClose={() => setIsCompareModalOpen(false)} title="Multi-Option Treatment Plan Comparison Matrix">
+        <div className="space-y-4 text-left max-w-4xl mx-auto">
+          <p className="text-xs text-muted-foreground font-semibold">
+            Compare distinct treatment alternatives side-by-side to present clear choices to the patient.
+          </p>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {['Option A', 'Option B', 'Option C'].map(optKey => {
+              const optPlans = rawPlans.filter(p => parseEncodedProcedure(p.procedure).option === optKey);
+              const optTotal = optPlans.reduce((sum, item) => sum + item.cost, 0);
+              const optIns = isInsured ? optTotal * 0.8 : 0;
+              const optCopay = optTotal - optIns;
+
+              return (
+                <div key={optKey} className={`p-4 rounded-2xl border ${selectedOption === optKey ? 'bg-primary/5 border-primary shadow-sm' : 'bg-card border-border'} space-y-3 flex flex-col justify-between`}>
+                  <div>
+                    <div className="flex justify-between items-center border-b border-border pb-2">
+                      <span className="font-extrabold text-sm text-foreground">{optKey}</span>
+                      <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full font-black">
+                        {optPlans.length} Procedure{optPlans.length !== 1 ? 's' : ''}
+                      </span>
+                    </div>
+
+                    {/* Financial summary */}
+                    <div className="py-2 space-y-1 border-b border-border/40 text-xs">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground font-semibold">Total Fee:</span>
+                        <span className="font-bold text-foreground">${optTotal.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between text-emerald-600">
+                        <span className="font-semibold">Est. Insurance:</span>
+                        <span className="font-bold">-${optIns.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between text-primary font-black pt-1">
+                        <span>Patient Copay:</span>
+                        <span>${optCopay.toFixed(2)}</span>
+                      </div>
+                    </div>
+
+                    {/* Procedures list */}
+                    <div className="pt-2 space-y-1.5 max-h-48 overflow-y-auto text-xs">
+                      <span className="text-[9px] font-extrabold uppercase text-muted-foreground tracking-wider block">Procedures & Phases</span>
+                      {optPlans.length > 0 ? (
+                        optPlans.map(p => {
+                          const { phase, cleanName } = parseEncodedProcedure(p.procedure);
+                          return (
+                            <div key={p.id} className="p-2 bg-muted/40 rounded-lg text-left">
+                              <span className="font-bold text-foreground block text-[11px]">{cleanName}</span>
+                              <div className="flex justify-between text-[10px] text-muted-foreground mt-0.5">
+                                <span>Tooth #{p.tooth} • {phase}</span>
+                                <span className="font-extrabold text-emerald-600">${p.cost}</span>
+                              </div>
+                            </div>
+                          );
+                        })
+                      ) : (
+                        <p className="text-[11px] text-muted-foreground italic py-3">No procedures in {optKey} yet.</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Accept plan action */}
+                  <Button
+                    onClick={async () => {
+                      if (optPlans.length === 0) {
+                        toast.error(`Add procedures to ${optKey} before accepting.`);
+                        return;
+                      }
+                      for (const p of optPlans) {
+                        await updateProcedureStatus(patientId, p.id, 'Accepted');
+                      }
+                      setSelectedOption(optKey);
+                      toast.success(`Accepted ${optKey} as active treatment plan!`);
+                      setIsCompareModalOpen(false);
+                    }}
+                    disabled={optPlans.length === 0}
+                    className="w-full font-bold text-xs h-9 bg-indigo-600 hover:bg-indigo-700 text-white cursor-pointer mt-3"
+                  >
+                    Accept & Activate {optKey}
+                  </Button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </Modal>
 
       {/* AI Suggestion Box */}
       <div className="lg:col-span-3 bg-card border border-border p-5 rounded-2xl shadow-sm space-y-4">

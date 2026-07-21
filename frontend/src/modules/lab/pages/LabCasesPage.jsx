@@ -23,6 +23,10 @@ export function LabCasesPage() {
     fetchLabCases();
     fetchPatients();
     fetchAppointments();
+    const interval = setInterval(() => {
+      fetchLabCases();
+    }, 3000);
+    return () => clearInterval(interval);
   }, [fetchLabCases, fetchPatients, fetchAppointments]);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -33,6 +37,8 @@ export function LabCasesPage() {
   const [commentingCase, setCommentingCase] = useState(null);
   const [newCommentText, setNewCommentText] = useState('');
   const [commentRole, setCommentRole] = useState('Lab Technician');
+
+  const activeCommentingCase = commentingCase ? (labCases.find(c => c.id === commentingCase.id) || commentingCase) : null;
 
   // Form State
   const [patientId, setPatientId] = useState('');
@@ -249,11 +255,15 @@ export function LabCasesPage() {
                         </Button>
                         <Button
                           size="xs"
-                          variant="secondary"
+                          variant={Array.isArray(c.comments) && c.comments.length > 0 ? "default" : "secondary"}
                           onClick={() => setCommentingCase(c)}
-                          className="font-extrabold text-[10px] h-7 gap-1 cursor-pointer bg-indigo-500/10 text-indigo-500 hover:bg-indigo-500/20"
+                          className={`font-extrabold text-[10px] h-7 gap-1 cursor-pointer transition-all ${
+                            Array.isArray(c.comments) && c.comments.length > 0
+                              ? "bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm"
+                              : "bg-indigo-500/10 text-indigo-500 hover:bg-indigo-500/20"
+                          }`}
                         >
-                          💬 Notes ({Array.isArray(c.comments) ? c.comments.length : 0})
+                          💬 Doctor Notes ({Array.isArray(c.comments) ? c.comments.length : 0})
                         </Button>
                         {c.status !== 'Delivered' && (
                           <Button
@@ -480,27 +490,27 @@ export function LabCasesPage() {
       </Modal>
 
       {/* Doctor ↔ Lab Technician Communication Notes Modal */}
-      {commentingCase && (
+      {activeCommentingCase && (
         <Modal
-          isOpen={Boolean(commentingCase)}
+          isOpen={Boolean(activeCommentingCase)}
           onClose={() => setCommentingCase(null)}
-          title={`Lab Case Communication Thread — #${commentingCase.id}`}
+          title={`Lab Case Communication Thread — #${activeCommentingCase.id}`}
         >
           <div className="space-y-4 text-left text-xs font-semibold">
             <div className="p-3 bg-muted/40 border border-border rounded-xl flex items-center justify-between">
               <div>
-                <span className="font-extrabold text-foreground block">{commentingCase.patientName}</span>
+                <span className="font-extrabold text-foreground block">{activeCommentingCase.patientName}</span>
                 <span className="text-[10px] text-muted-foreground font-bold uppercase">
-                  {commentingCase.type} &bull; {commentingCase.labName}
+                  {activeCommentingCase.type} &bull; {activeCommentingCase.labName}
                 </span>
               </div>
-              <Badge variant="info" className="font-bold">{commentingCase.status}</Badge>
+              <Badge variant="info" className="font-bold">{activeCommentingCase.status}</Badge>
             </div>
 
-            {commentingCase.notes && (
+            {activeCommentingCase.notes && (
               <div className="p-3 bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 rounded-xl space-y-0.5">
                 <span className="text-[9px] font-black uppercase tracking-wider block">Clinical Instructions</span>
-                <p className="text-[11px] font-bold leading-relaxed">{commentingCase.notes}</p>
+                <p className="text-[11px] font-bold leading-relaxed">{activeCommentingCase.notes}</p>
               </div>
             )}
 
@@ -509,8 +519,8 @@ export function LabCasesPage() {
               <label className="text-[10px] font-extrabold text-muted-foreground uppercase tracking-wider block">Discussion & Shade Notes Thread</label>
               
               <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
-                {Array.isArray(commentingCase.comments) && commentingCase.comments.length > 0 ? (
-                  commentingCase.comments.map((cm) => (
+                {Array.isArray(activeCommentingCase.comments) && activeCommentingCase.comments.length > 0 ? (
+                  activeCommentingCase.comments.map((cm) => (
                     <div key={cm.id} className="p-2.5 bg-card border border-border rounded-xl space-y-1">
                       <div className="flex items-center justify-between text-[10px]">
                         <span className="font-extrabold text-primary">{cm.authorName} <span className="text-muted-foreground font-normal">({cm.authorRole})</span></span>
@@ -546,12 +556,15 @@ export function LabCasesPage() {
 
                 <Button
                   size="sm"
-                  onClick={() => {
+                  onClick={async () => {
                     if (!newCommentText.trim()) return;
-                    useLabStore.getState().addCaseComment(commentingCase.id, newCommentText.trim(), commentRole, commentRole.includes('Doctor') || commentRole.includes('DDS') ? 'Dentist' : 'Lab Tech');
+                    await useLabStore.getState().addCaseComment(
+                      activeCommentingCase.id, 
+                      newCommentText.trim(), 
+                      commentRole, 
+                      commentRole.includes('Doctor') || commentRole.includes('DDS') ? 'Dentist' : 'Lab Tech'
+                    );
                     setNewCommentText('');
-                    const updated = useLabStore.getState().labCases.find(c => c.id === commentingCase.id);
-                    if (updated) setCommentingCase(updated);
                     toast.success('Communication note posted to lab case file.');
                   }}
                   className="font-bold text-xs h-8 cursor-pointer"
