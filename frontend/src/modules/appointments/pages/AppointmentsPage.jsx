@@ -1625,7 +1625,6 @@ function MultiProviderCalendar({
       if (showGeneric) return true;
       const ids = [apt.assignedDoctorId, apt.dentistId, apt.assignedHygienistId, apt.assignedAssistantId];
       if (ids.includes(providerId)) return true;
-      if (user && ['dentist', 'hygienist', 'dental_assistant', 'assistant'].includes(role)) return true;
       return false;
     });
   }
