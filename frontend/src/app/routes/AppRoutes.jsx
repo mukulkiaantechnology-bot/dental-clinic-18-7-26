@@ -196,9 +196,11 @@ export function AppRoutes() {
 
   return (
     <BrowserRouter>
-      <ImpersonationBanner />
-      <ToastContainer />
-      <Routes>
+      <div className="flex flex-col h-screen w-screen overflow-hidden">
+        <ImpersonationBanner />
+        <ToastContainer />
+        <div className="flex-1 min-h-0 flex flex-col overflow-hidden relative">
+          <Routes>
         {/* Public Routes */}
         <Route path="/" element={<LandingPage />} />
         <Route
@@ -408,6 +410,8 @@ export function AppRoutes() {
         </Route>
       </Routes>
       <AICopilotWidget />
+        </div>
+      </div>
     </BrowserRouter>
   );
 }

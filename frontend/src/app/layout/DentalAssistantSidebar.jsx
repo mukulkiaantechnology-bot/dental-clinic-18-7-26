@@ -14,7 +14,7 @@ export function DentalAssistantSidebar({ isMobileOpen, onClose }) {
 
   const menuItems = [
     { key: 'dashboard', label: 'Dashboard', icon: 'LayoutDashboard', path: '/assistant/dashboard' },
-    { key: 'scheduler', label: 'AI Appointment Scheduler', icon: 'Calendar', path: '/appointments/calendar' },
+    { key: 'scheduler', label: 'Appointment Scheduler', icon: 'Calendar', path: '/appointments/calendar' },
     { key: 'patients', label: 'Patients', icon: 'Users', path: '/assistant/patients' }
   ];
 

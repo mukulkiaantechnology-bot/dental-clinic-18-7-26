@@ -14,7 +14,7 @@ export function ClinicOwnerLayout({ children }) {
   }, [fetchClinicSettings]);
 
   return (
-    <div className="flex flex-col h-screen w-screen overflow-hidden">
+    <div className="flex flex-col h-full w-full overflow-hidden">
       <SystemStatusBar />
       <div className="flex-1 flex overflow-hidden bg-background text-foreground">
         {/* Clinic Owner Collapsible Sidebar (Drawer on mobile) */}

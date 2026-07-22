@@ -30,7 +30,7 @@ export function HygienistSidebar({ isMobileOpen, onClose }) {
 
   const menuItems = [
     { key: 'dashboard', label: 'Dashboard', icon: 'LayoutDashboard' },
-    { key: 'appointments_calendar', label: 'AI Appointment Scheduler', icon: 'Sparkles' },
+    { key: 'appointments_calendar', label: 'Appointment Scheduler', icon: 'Sparkles' },
     { key: 'patients', label: 'Patients', icon: 'Users' }
   ];
 

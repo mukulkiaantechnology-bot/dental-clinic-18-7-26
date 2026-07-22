@@ -16,7 +16,7 @@ export const MODULE_ROUTES = [
   { module: 'clinic_staff', path: '/clinic/staff', label: 'Staff Management', icon: 'UserCheck' },
   { module: 'clinic_reports', path: '/clinic/reports', label: 'Reports', icon: 'TrendingUp' },
   { module: 'ai_recall', path: '/communication/ai-recall', label: 'AI Recall & Marketing', icon: 'Megaphone' },
-  { module: 'appointments_calendar', path: '/appointments/calendar', label: 'AI Appointment Scheduler', icon: 'Sparkles' },
+  { module: 'appointments_calendar', path: '/appointments/calendar', label: 'Appointment Scheduler', icon: 'Sparkles' },
   { module: 'clinic_settings', path: '/clinic/settings', label: 'Clinic Settings', icon: 'Settings' },
 
   // Dentist Clinical Modules (Exactly 8 Modules)

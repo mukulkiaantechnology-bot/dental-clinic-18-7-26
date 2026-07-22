@@ -29,7 +29,7 @@ export function DentistSidebar({ isMobileOpen, onClose }) {
 
   const menuItems = [
     { key: 'dashboard', label: 'Dashboard', icon: 'LayoutDashboard' },
-    { key: 'appointments', label: 'AI Appointment Scheduler', icon: 'Sparkles' },
+    { key: 'appointments', label: 'Appointment Scheduler', icon: 'Sparkles' },
     { key: 'patients', label: 'Patients Registry', icon: 'Users' }
   ];
 

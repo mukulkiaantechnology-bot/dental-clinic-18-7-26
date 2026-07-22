@@ -8,7 +8,7 @@ export function SuperAdminLayout({ children }) {
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
   return (
-    <div className="flex flex-col h-screen w-screen overflow-hidden">
+    <div className="flex flex-col h-full w-full overflow-hidden">
       <SystemStatusBar />
       <div className="flex-1 flex overflow-hidden bg-background text-foreground">
         {/* Super Admin Collapsible Sidebar (Drawer on mobile) */}

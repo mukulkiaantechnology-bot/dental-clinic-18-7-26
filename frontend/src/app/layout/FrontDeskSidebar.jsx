@@ -13,7 +13,7 @@ export function FrontDeskSidebar({ isMobileOpen, onClose }) {
 
   const menuItems = [
     { key: 'dashboard', label: 'Dashboard', icon: 'LayoutDashboard', path: '/frontdesk/dashboard' },
-    { key: 'appointments', label: 'AI Appointment Scheduler', icon: 'Sparkles', path: '/appointments/calendar' },
+    { key: 'appointments', label: 'Appointment Scheduler', icon: 'Sparkles', path: '/appointments/calendar' },
     { key: 'registration', label: 'Registration', icon: 'UserPlus', path: '/frontdesk/registration' },
     { key: 'insurance', label: 'Insurance', icon: 'FileShield', path: '/frontdesk/insurance' },
     { key: 'waitlist', label: 'Waitlist', icon: 'Clock', path: '/frontdesk/waitlist' },

@@ -39,7 +39,7 @@ export function LabCoordinatorLayout({ children }) {
   if (!user) return null;
 
   return (
-    <div className="flex flex-col h-screen w-screen overflow-hidden">
+    <div className="flex flex-col h-full w-full overflow-hidden">
       <SystemStatusBar />
       <div className="flex-1 flex overflow-hidden bg-background text-foreground select-none">
       {/* Sidebar */}

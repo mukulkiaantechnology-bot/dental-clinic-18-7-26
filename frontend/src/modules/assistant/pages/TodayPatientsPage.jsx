@@ -500,7 +500,7 @@ export function TodayPatientsPage({ view = 'dashboard' }) {
                 Assistant Workspace Guidelines
               </h3>
               <p className="text-xs text-muted-foreground font-semibold leading-relaxed">
-                Welcome to your daily workspace overview. Use the <strong>AI Appointment Scheduler</strong> to monitor when patients are checked in by the receptionist. Once arrived, select the patient to seat them, which activates the clinical tools (Chairside Checklist, X-Ray Uploads, and Clinical Notes).
+                Welcome to your daily workspace overview. Use the <strong>Appointment Scheduler</strong> to monitor when patients are checked in by the receptionist. Once arrived, select the patient to seat them, which activates the clinical tools (Chairside Checklist, X-Ray Uploads, and Clinical Notes).
               </p>
               
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
@@ -558,7 +558,7 @@ export function TodayPatientsPage({ view = 'dashboard' }) {
           {/* Header */}
           <div className="border-b border-border pb-4">
             <h2 className="text-2xl font-black tracking-tight text-foreground bg-gradient-to-r from-primary to-indigo-500 bg-clip-text text-transparent">
-              AI Appointment Scheduler
+              Appointment Scheduler
             </h2>
             <p className="text-xs text-muted-foreground font-semibold">
               Track real-time receptionist intakes, assign seatings, and pass patient records to dentist.

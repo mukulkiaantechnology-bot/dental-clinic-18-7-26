@@ -245,6 +245,15 @@ export function BillingInvoicesTab() {
 
   const [isOpen, setIsOpen] = useState(() => searchParams.get('action') === 'create-invoice');
   const [editingInv, setEditingInv] = useState(null);
+  const [viewingInv, setViewingInv] = useState(null); // ← View modal state
+
+  // Helper: clean ISO date to DD MMM YYYY
+  const formatDate = (raw) => {
+    if (!raw) return '—';
+    try {
+      return new Date(raw).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    } catch { return raw; }
+  };
 
   // Form state
   const [patientId, setPatientId] = useState(() => patients[0]?.id || '');
@@ -417,8 +426,8 @@ export function BillingInvoicesTab() {
   const columns = [
     { key: 'id', header: 'Invoice ID', render: (inv) => <span className="font-bold text-slate-500 text-[11px]">#{inv.id}</span> },
     { key: 'patientName', header: 'Patient', render: (inv) => <span className="font-extrabold text-foreground text-xs">{inv.patientName}</span> },
-    { key: 'date', header: 'Date', render: (inv) => <span className="text-xs font-medium text-muted-foreground">{inv.date}</span> },
-    { key: 'dueDate', header: 'Due Date', render: (inv) => <span className="text-xs font-medium text-muted-foreground">{inv.dueDate || '—'}</span> },
+    { key: 'date', header: 'Date', render: (inv) => <span className="text-xs font-medium text-muted-foreground">{formatDate(inv.date)}</span> },
+    { key: 'dueDate', header: 'Due Date', render: (inv) => <span className="text-xs font-medium text-muted-foreground">{formatDate(inv.dueDate)}</span> },
     { key: 'amount', header: 'Total', render: (inv) => <span className="font-extrabold text-foreground text-xs">${inv.amount.toFixed(2)}</span> },
     {
       key: 'balance',
@@ -435,6 +444,9 @@ export function BillingInvoicesTab() {
       align: 'right',
       render: (inv) => (
         <div className="flex gap-1.5 justify-end">
+          <Button size="xs" variant="outline" onClick={() => setViewingInv(inv)} className="h-7 gap-1 font-bold text-[9px] text-indigo-500 border-indigo-500/20 hover:bg-indigo-500/10">
+            <FileText className="h-3 w-3" /> View
+          </Button>
           <Button size="xs" variant="outline" onClick={() => handleOpenEdit(inv)} className="h-7 gap-1 font-bold text-[9px] text-primary border-primary/20 hover:bg-primary/10">
             <Edit2 className="h-3 w-3" /> Edit
           </Button>
@@ -543,6 +555,84 @@ export function BillingInvoicesTab() {
           </div>
         </form>
       </Modal>
+
+      {/* ── VIEW INVOICE MODAL ─────────────────────────────────────────────── */}
+      {viewingInv && (
+        <Modal isOpen={!!viewingInv} onClose={() => setViewingInv(null)} title={`Invoice Details — #${viewingInv.id}`}>
+          <div className="space-y-4 text-xs">
+            {/* Patient + Dates */}
+            <div className="grid grid-cols-2 gap-3 bg-muted/40 rounded-xl p-3 border border-border">
+              <div>
+                <span className="text-[9px] font-black text-muted-foreground uppercase tracking-wider block">Patient</span>
+                <span className="font-extrabold text-foreground text-sm">{viewingInv.patientName}</span>
+              </div>
+              <div>
+                <span className="text-[9px] font-black text-muted-foreground uppercase tracking-wider block">Status</span>
+                <InvoiceStatusBadge status={viewingInv.status} />
+              </div>
+              <div>
+                <span className="text-[9px] font-black text-muted-foreground uppercase tracking-wider block">Invoice Date</span>
+                <span className="font-semibold text-foreground">{formatDate(viewingInv.date)}</span>
+              </div>
+              <div>
+                <span className="text-[9px] font-black text-muted-foreground uppercase tracking-wider block">Due Date</span>
+                <span className="font-semibold text-foreground">{formatDate(viewingInv.dueDate)}</span>
+              </div>
+            </div>
+
+            {/* Line Items Table */}
+            <div>
+              <span className="text-[9px] font-black text-muted-foreground uppercase tracking-wider block mb-2">Procedure / Service Line Items</span>
+              <div className="border border-border rounded-xl overflow-hidden">
+                <table className="w-full text-xs">
+                  <thead className="bg-muted/60">
+                    <tr>
+                      <th className="text-left p-2.5 font-black text-[9px] uppercase text-muted-foreground">Description</th>
+                      <th className="text-right p-2.5 font-black text-[9px] uppercase text-muted-foreground">Cost</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {(Array.isArray(viewingInv.items) && viewingInv.items.length > 0)
+                      ? viewingInv.items.map((item, idx) => (
+                          <tr key={idx} className="hover:bg-muted/20">
+                            <td className="p-2.5 font-semibold text-foreground">{item.description}</td>
+                            <td className="p-2.5 text-right font-extrabold text-foreground">${parseFloat(item.cost || 0).toFixed(2)}</td>
+                          </tr>
+                        ))
+                      : <tr><td colSpan={2} className="p-4 text-center text-muted-foreground">No line items found.</td></tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Financial Summary */}
+            <div className="bg-muted/40 border border-border rounded-xl p-3 space-y-2">
+              <div className="flex justify-between text-muted-foreground">
+                <span className="font-semibold">Subtotal (Total Fee)</span>
+                <span className="font-bold">${viewingInv.amount.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-emerald-600">
+                <span className="font-semibold">Insurance Covered (80%)</span>
+                <span className="font-bold">-${(viewingInv.insurancePaid || 0).toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-muted-foreground">
+                <span className="font-semibold">Patient Already Paid</span>
+                <span className="font-bold">-${(viewingInv.patientPaid || 0).toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between font-black text-sm border-t border-border pt-2">
+                <span className="text-foreground">Balance Due (Copay)</span>
+                <span className="text-rose-500">${Math.max(0, viewingInv.amount - (viewingInv.insurancePaid || 0) - (viewingInv.patientPaid || 0)).toFixed(2)}</span>
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <Button size="sm" variant="outline" onClick={() => setViewingInv(null)} className="font-bold text-xs cursor-pointer">Close</Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+      {/* ─────────────────────────────────────────────────────────────────── */}
     </div>
   );
 }

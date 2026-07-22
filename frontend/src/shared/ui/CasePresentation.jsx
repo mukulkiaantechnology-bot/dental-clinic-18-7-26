@@ -1,6 +1,7 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { Sparkles, Signature } from 'lucide-react';
 import { useDentistStore } from '../../store/dentistStore';
+import { useBillingStore } from '../../store/billingStore';
 import { useToast } from '../hooks/useToast';
 import { Button } from './Button';
 import { Badge } from './Badge';
@@ -43,8 +44,10 @@ export function CasePresentation({ patientId }) {
     uploadAfterImage, 
     fetchPatientDetails,
     signatures,
-    savePatientSignature
+    savePatientSignature,
+    patients
   } = useDentistStore();
+  const { createInvoice, updateInvoice, invoices } = useBillingStore();
   const toast = useToast();
 
   useEffect(() => {
@@ -237,7 +240,53 @@ export function CasePresentation({ patientId }) {
       await updateProcedureStatus(patientId, id, 'Accepted');
     }
 
-    toast.success('Treatment plans accepted successfully! Signed contract archived.');
+    // ── SMART INVOICE: MERGE INTO EXISTING UNPAID OR CREATE NEW ─────────────
+    const selectedPlans = proposedPlans.filter(p => selectedIds.includes(p.id));
+    const patient = patients.find(p => p.id === patientId);
+    const newItems = selectedPlans.map(p => ({
+      description: `${p.procedure} (Tooth #${p.tooth})`,
+      cost: p.cost
+    }));
+
+    // Check if patient already has an UNPAID invoice → merge into it
+    const existingUnpaid = invoices.find(
+      inv => inv.patientId === patientId && inv.status === 'Unpaid'
+    );
+
+    if (existingUnpaid) {
+      // Merge new items with existing items
+      const existingItems = Array.isArray(existingUnpaid.items) ? existingUnpaid.items : [];
+      const mergedItems = [...existingItems, ...newItems];
+      const newTotal = mergedItems.reduce((sum, i) => sum + (parseFloat(i.cost) || 0), 0);
+      const newInsurance = newTotal * 0.8;
+
+      await updateInvoice(existingUnpaid.id, {
+        amount: newTotal,
+        insurancePaid: newInsurance,
+        items: mergedItems
+      });
+      toast.success('Treatment plans accepted! Added to existing invoice in Billing.');
+    } else {
+      // No existing unpaid invoice — create fresh one
+      const today = new Date();
+      const dueDate = new Date(today.getTime() + 30 * 24 * 60 * 60 * 1000);
+      await createInvoice({
+        patientId,
+        patientName: patient?.name || 'Unknown Patient',
+        date: today.toISOString().split('T')[0],
+        dueDate: dueDate.toISOString().split('T')[0],
+        amount: calculations.totalFee,
+        insurancePaid: calculations.insuranceCoverage,
+        patientPaid: 0,
+        tax: 0,
+        discount: 0,
+        status: 'Unpaid',
+        items: newItems
+      });
+      toast.success('Treatment plans accepted! Invoice created in Billing section.');
+    }
+    // ────────────────────────────────────────────────────────────────────────
+
     setSelectedIds([]);
   };
 
